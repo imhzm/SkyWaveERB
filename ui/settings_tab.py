@@ -72,6 +72,10 @@ class SettingsTab(QWidget):
         self.template_tab = TemplateSettings(self.settings_service)
         self.tabs.addTab(self.template_tab, "🎨 قوالب الفواتير")
         
+        # تاب التحديثات
+        self.update_tab = QWidget()
+        self.tabs.addTab(self.update_tab, "🔄 التحديثات")
+        self.setup_update_tab()
 
 
         # تطبيق الأسهم على كل الـ widgets
@@ -1281,3 +1285,334 @@ class SettingsTab(QWidget):
                     
             except Exception as e:
                 QMessageBox.critical(self, "خطأ", f"فشل في تعطيل المستخدم: {str(e)}")
+
+    def setup_update_tab(self):
+        """إعداد تاب التحديثات"""
+        layout = QVBoxLayout(self.update_tab)
+        
+        # معلومات الإصدار الحالي
+        from version import CURRENT_VERSION, APP_NAME
+        
+        version_group = QGroupBox("📱 معلومات الإصدار")
+        version_layout = QVBoxLayout()
+        
+        app_name_label = QLabel(f"<h2>{APP_NAME}</h2>")
+        app_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        app_name_label.setStyleSheet("color: #4a90e2; font-weight: bold;")
+        version_layout.addWidget(app_name_label)
+        
+        current_version_label = QLabel(f"الإصدار الحالي: <b>{CURRENT_VERSION}</b>")
+        current_version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        current_version_label.setStyleSheet("font-size: 16px; color: #10b981; padding: 10px;")
+        version_layout.addWidget(current_version_label)
+        
+        version_group.setLayout(version_layout)
+        layout.addWidget(version_group)
+        
+        # معلومات التحديث
+        update_info_group = QGroupBox("ℹ️ معلومات التحديث")
+        update_info_layout = QVBoxLayout()
+        
+        self.update_status_label = QLabel("اضغط على 'التحقق من التحديثات' للبحث عن إصدارات جديدة")
+        self.update_status_label.setWordWrap(True)
+        self.update_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.update_status_label.setStyleSheet("""
+            background-color: #1e3a8a;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        update_info_layout.addWidget(self.update_status_label)
+        
+        update_info_group.setLayout(update_info_layout)
+        layout.addWidget(update_info_group)
+        
+        # شريط التقدم (مخفي في البداية)
+        self.update_progress_bar = QProgressBar()
+        self.update_progress_bar.setVisible(False)
+        self.update_progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 2px solid #3b82f6;
+                border-radius: 8px;
+                text-align: center;
+                background-color: #001a3a;
+                color: white;
+                font-weight: bold;
+            }
+            QProgressBar::chunk {
+                background-color: #10b981;
+                border-radius: 6px;
+            }
+        """)
+        layout.addWidget(self.update_progress_bar)
+        
+        # أزرار التحكم
+        buttons_layout = QHBoxLayout()
+        
+        self.check_update_btn = QPushButton("🔍 التحقق من التحديثات")
+        self.check_update_btn.setStyleSheet(BUTTON_STYLES["primary"])
+        self.check_update_btn.clicked.connect(self.check_for_updates)
+        
+        self.download_update_btn = QPushButton("⬇️ تنزيل التحديث")
+        self.download_update_btn.setStyleSheet(BUTTON_STYLES["success"])
+        self.download_update_btn.setVisible(False)
+        self.download_update_btn.clicked.connect(self.download_update)
+        
+        self.install_update_btn = QPushButton("🚀 تثبيت التحديث")
+        self.install_update_btn.setStyleSheet(BUTTON_STYLES["warning"])
+        self.install_update_btn.setVisible(False)
+        self.install_update_btn.clicked.connect(self.install_update)
+        
+        buttons_layout.addWidget(self.check_update_btn)
+        buttons_layout.addWidget(self.download_update_btn)
+        buttons_layout.addWidget(self.install_update_btn)
+        buttons_layout.addStretch()
+        layout.addLayout(buttons_layout)
+        
+        # ملاحظات التحديث
+        notes_group = QGroupBox("📝 ملاحظات مهمة")
+        notes_layout = QVBoxLayout()
+        
+        notes_text = QLabel(
+            "• سيتم تحديث البرنامج في نفس المكان الحالي\n"
+            "• لن تفقد أي بيانات أثناء التحديث\n"
+            "• سيتم إغلاق البرنامج تلقائياً وإعادة تشغيله بعد التحديث\n"
+            "• تأكد من حفظ جميع أعمالك قبل التحديث"
+        )
+        notes_text.setWordWrap(True)
+        notes_text.setStyleSheet("color: #9ca3af; padding: 10px;")
+        notes_layout.addWidget(notes_text)
+        
+        notes_group.setLayout(notes_layout)
+        layout.addWidget(notes_group)
+        
+        layout.addStretch()
+        
+        # تهيئة متغيرات التحديث
+        self.update_download_url = None
+        self.update_version = None
+        self.update_service = None
+
+    def check_for_updates(self):
+        """التحقق من وجود تحديثات جديدة"""
+        from version import CURRENT_VERSION, UPDATE_CHECK_URL
+        from services.update_service import UpdateService
+        
+        # تعطيل الزرار أثناء الفحص
+        self.check_update_btn.setEnabled(False)
+        self.check_update_btn.setText("⏳ جاري التحقق...")
+        self.update_status_label.setText("🔍 جاري البحث عن تحديثات جديدة...")
+        self.update_status_label.setStyleSheet("""
+            background-color: #f59e0b;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        
+        # إنشاء خدمة التحديث
+        self.update_service = UpdateService(CURRENT_VERSION, UPDATE_CHECK_URL)
+        
+        # إنشاء Thread للتحقق
+        self.update_checker = self.update_service.check_for_updates()
+        
+        # ربط الإشارات
+        self.update_checker.update_available.connect(self.on_update_available)
+        self.update_checker.no_update.connect(self.on_no_update)
+        self.update_checker.error_occurred.connect(self.on_update_error)
+        
+        # بدء الفحص
+        self.update_checker.start()
+
+    def on_update_available(self, version, url):
+        """عند توفر تحديث جديد"""
+        self.update_version = version
+        self.update_download_url = url
+        
+        self.update_status_label.setText(
+            f"🎉 يتوفر إصدار جديد!\n\n"
+            f"الإصدار الجديد: <b>{version}</b>\n"
+            f"اضغط على 'تنزيل التحديث' للبدء"
+        )
+        self.update_status_label.setStyleSheet("""
+            background-color: #10b981;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        
+        # إظهار زرار التنزيل
+        self.download_update_btn.setVisible(True)
+        
+        # إعادة تفعيل زرار الفحص
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("🔍 التحقق من التحديثات")
+
+    def on_no_update(self):
+        """عند عدم توفر تحديثات"""
+        from version import CURRENT_VERSION
+        
+        self.update_status_label.setText(
+            f"✅ أنت تستخدم أحدث إصدار!\n\n"
+            f"الإصدار الحالي: <b>{CURRENT_VERSION}</b>"
+        )
+        self.update_status_label.setStyleSheet("""
+            background-color: #10b981;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        
+        # إعادة تفعيل زرار الفحص
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("🔍 التحقق من التحديثات")
+
+    def on_update_error(self, error_message):
+        """عند حدوث خطأ في الفحص"""
+        self.update_status_label.setText(
+            f"❌ حدث خطأ أثناء التحقق من التحديثات:\n\n{error_message}"
+        )
+        self.update_status_label.setStyleSheet("""
+            background-color: #ef4444;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        
+        # إعادة تفعيل زرار الفحص
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("🔍 التحقق من التحديثات")
+        
+        QMessageBox.warning(self, "خطأ", f"فشل التحقق من التحديثات:\n{error_message}")
+
+    def download_update(self):
+        """تنزيل التحديث"""
+        if not self.update_download_url:
+            QMessageBox.warning(self, "خطأ", "لا يوجد رابط تحديث متاح")
+            return
+        
+        # تأكيد التنزيل
+        reply = QMessageBox.question(
+            self, "تأكيد التنزيل",
+            f"سيتم تنزيل الإصدار {self.update_version}\n\nهل تريد المتابعة؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        # تعطيل الأزرار
+        self.download_update_btn.setEnabled(False)
+        self.check_update_btn.setEnabled(False)
+        
+        # إظهار شريط التقدم
+        self.update_progress_bar.setVisible(True)
+        self.update_progress_bar.setValue(0)
+        
+        self.update_status_label.setText("⬇️ جاري تنزيل التحديث...")
+        self.update_status_label.setStyleSheet("""
+            background-color: #3b82f6;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        
+        # إنشاء Thread للتنزيل
+        self.update_downloader = self.update_service.download_update(self.update_download_url)
+        
+        # ربط الإشارات
+        self.update_downloader.progress_updated.connect(self.on_download_progress)
+        self.update_downloader.download_completed.connect(self.on_download_completed)
+        self.update_downloader.error_occurred.connect(self.on_download_error)
+        
+        # بدء التنزيل
+        self.update_downloader.start()
+
+    def on_download_progress(self, progress):
+        """تحديث شريط التقدم"""
+        self.update_progress_bar.setValue(progress)
+
+    def on_download_completed(self, file_path):
+        """عند اكتمال التنزيل"""
+        self.update_progress_bar.setValue(100)
+        
+        self.update_status_label.setText(
+            f"✅ تم تنزيل التحديث بنجاح!\n\n"
+            f"اضغط على 'تثبيت التحديث' لإكمال العملية"
+        )
+        self.update_status_label.setStyleSheet("""
+            background-color: #10b981;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        
+        # إخفاء زرار التنزيل وإظهار زرار التثبيت
+        self.download_update_btn.setVisible(False)
+        self.install_update_btn.setVisible(True)
+        
+        # إعادة تفعيل زرار الفحص
+        self.check_update_btn.setEnabled(True)
+
+    def on_download_error(self, error_message):
+        """عند حدوث خطأ في التنزيل"""
+        self.update_progress_bar.setVisible(False)
+        
+        self.update_status_label.setText(
+            f"❌ فشل تنزيل التحديث:\n\n{error_message}"
+        )
+        self.update_status_label.setStyleSheet("""
+            background-color: #ef4444;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+        """)
+        
+        # إعادة تفعيل الأزرار
+        self.download_update_btn.setEnabled(True)
+        self.check_update_btn.setEnabled(True)
+        
+        QMessageBox.critical(self, "خطأ", f"فشل تنزيل التحديث:\n{error_message}")
+
+    def install_update(self):
+        """تثبيت التحديث"""
+        reply = QMessageBox.warning(
+            self, "⚠️ تأكيد التثبيت",
+            "سيتم إغلاق البرنامج الآن لتثبيت التحديث.\n"
+            "سيتم إعادة تشغيل البرنامج تلقائياً بعد التحديث.\n\n"
+            "تأكد من حفظ جميع أعمالك!\n\n"
+            "هل تريد المتابعة؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        try:
+            # تطبيق التحديث
+            success = self.update_service.apply_update(
+                self.update_service.temp_update_path,
+                "main.py"  # أو اسم الملف التنفيذي
+            )
+            
+            if success:
+                # إغلاق البرنامج
+                import sys
+                sys.exit(0)
+            else:
+                QMessageBox.critical(
+                    self, "خطأ",
+                    "فشل تشغيل المحدث.\n"
+                    "تأكد من وجود ملف updater.exe أو updater.py في مجلد البرنامج."
+                )
+                
+        except Exception as e:
+            QMessageBox.critical(self, "خطأ", f"فشل تثبيت التحديث:\n{e}")
