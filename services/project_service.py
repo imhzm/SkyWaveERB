@@ -217,6 +217,38 @@ class ProjectService:
         except Exception as e:
             print(f"ERROR: [ProjectService] فشل إنشاء المشروع من عرض السعر: {e}")
 
+    def _auto_update_project_status(self, project_name: str):
+        """⚡ تحديث حالة المشروع أوتوماتيك بناءً على المدفوعات"""
+        try:
+            project = self.repo.get_project_by_number(project_name)
+            if not project:
+                return
+            
+            # حساب المدفوعات
+            payments = self.repo.get_payments_for_project(project_name)
+            total_paid = sum([p.amount for p in payments])
+            
+            # تحديد الحالة الجديدة
+            new_status = None
+            if total_paid >= project.total_amount:
+                # تم الدفع بالكامل = مكتمل
+                new_status = schemas.ProjectStatus.COMPLETED
+            elif total_paid > 0:
+                # تم دفع جزء = نشط
+                new_status = schemas.ProjectStatus.ACTIVE
+            else:
+                # لم يتم الدفع = تخطيط
+                new_status = schemas.ProjectStatus.PLANNING
+            
+            # تحديث الحالة إذا تغيرت
+            if new_status and project.status != new_status:
+                project.status = new_status
+                self.repo.update_project(project_name, project)
+                print(f"✅ [ProjectService] تم تحديث حالة المشروع '{project_name}' إلى '{new_status.value}'")
+                
+        except Exception as e:
+            print(f"WARNING: [ProjectService] فشل تحديث حالة المشروع: {e}")
+    
     # --- دوال الربحية (معدلة عشان تستخدم الداتا الصح) ---
     def get_project_profitability(self, project_name: str) -> dict:
         print(f"INFO: [ProjectService] جاري حساب ربحية مشروع: {project_name}")
@@ -242,6 +274,9 @@ class ProjectService:
 
             net_profit = total_revenue - total_expenses  # (ربح الشركة)
             balance_due = max(0, total_revenue - total_paid)  # (المتبقي على العميل - لا يمكن أن يكون سالب)
+            
+            # ⚡ تحديث حالة المشروع أوتوماتيك
+            self._auto_update_project_status(project_name)
 
             return {
                 "total_revenue": total_revenue,

@@ -1261,16 +1261,18 @@ class ProjectManagerTab(QWidget):
     def _format_date(self, value) -> str:
         if not value:
             return "-"
-        if isinstance(value, datetime.datetime):
-            return value.strftime("%Y-%m-%d")
-        if isinstance(value, datetime.date):
+        if isinstance(value, datetime):
             return value.strftime("%Y-%m-%d")
         if isinstance(value, str):
             try:
-                parsed = datetime.datetime.fromisoformat(value)
+                # محاولة تحليل التاريخ من النص
+                if 'T' in value:
+                    parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                else:
+                    parsed = datetime.strptime(value[:10], "%Y-%m-%d")
                 return parsed.strftime("%Y-%m-%d")
-            except ValueError:
-                return value
+            except:
+                return value[:10] if len(value) >= 10 else value
         return str(value)
 
     def open_editor(self, project_to_edit: Optional[schemas.Project] = None):

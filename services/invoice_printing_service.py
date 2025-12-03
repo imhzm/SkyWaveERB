@@ -37,11 +37,21 @@ class InvoicePrintingService:
         # إنشاء مجلد الصادرات إذا لم يكن موجوداً
         self.exports_dir.mkdir(exist_ok=True)
         
-        # تهيئة Jinja2
+        # ⚡ تهيئة Jinja2 مع caching للسرعة
         self.env = Environment(
             loader=FileSystemLoader(str(self.templates_dir)),
-            autoescape=select_autoescape(['html', 'xml'])
+            autoescape=select_autoescape(['html', 'xml']),
+            cache_size=400,  # ⚡ تفعيل الـ cache
+            auto_reload=False  # ⚡ تعطيل auto reload للسرعة
         )
+        
+        # ⚡ تحميل القالب مسبقاً (pre-compile)
+        try:
+            self.invoice_template = self.env.get_template("final_invoice.html")
+            print(f"✅ [InvoicePrintingService] تم تحميل القالب مسبقاً")
+        except Exception as e:
+            print(f"WARNING: [InvoicePrintingService] فشل تحميل القالب: {e}")
+            self.invoice_template = None
         
         print(f"INFO: [InvoicePrintingService] Templates directory: {self.templates_dir}")
         print(f"INFO: [InvoicePrintingService] Exports directory: {self.exports_dir}")
@@ -62,8 +72,8 @@ class InvoicePrintingService:
             # Step 1: تحضير البيانات الكاملة
             context = self._prepare_context(invoice_data)
             
-            # Step 2: رندر HTML من القالب
-            template = self.env.get_template("final_invoice.html")
+            # ⚡ Step 2: رندر HTML من القالب (استخدام القالب المحمل مسبقاً)
+            template = self.invoice_template if self.invoice_template else self.env.get_template("final_invoice.html")
             html_content = template.render(**context)
             
             # Step 3: توليد اسم الملف
@@ -110,9 +120,6 @@ class InvoicePrintingService:
         
         default_logo = str(base_path / "site logo.png")
         default_font = str(base_path / "assets" / "font" / "Cairo-VariableFont_slnt,wght.ttf")
-        
-        print(f"DEBUG: [InvoicePrintingService] base_path: {base_path}")
-        print(f"DEBUG: [InvoicePrintingService] default_logo: {default_logo}")
         
         # إضافة بيانات الشركة من الإعدادات
         if self.settings_service:
@@ -234,15 +241,18 @@ class InvoicePrintingService:
             driver = webdriver.Chrome(options=chrome_options)
             driver.get(f'file:///{os.path.abspath(temp_html)}')
             
-            # طباعة PDF
+            # ⚡ طباعة PDF بحجم A4 ثابت (لا يتغير)
             pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
                 "printBackground": True,
-                "paperWidth": 8.27,  # A4 width in inches
-                "paperHeight": 11.69,  # A4 height in inches
+                "paperWidth": 8.27,  # A4 width in inches (210mm)
+                "paperHeight": 11.69,  # A4 height in inches (297mm)
                 "marginTop": 0,
                 "marginBottom": 0,
                 "marginLeft": 0,
-                "marginRight": 0
+                "marginRight": 0,
+                "scale": 1.0,  # ⚡ تثبيت المقياس
+                "preferCSSPageSize": False,  # ⚡ تجاهل CSS page size
+                "displayHeaderFooter": False
             })
             
             # حفظ PDF

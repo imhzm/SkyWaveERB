@@ -117,6 +117,61 @@ class ExportService:
         
         return self.export_to_excel(data, "clients_export.xlsx", "العملاء")
     
+    def import_clients_from_excel(self, filepath: str) -> tuple[List[Dict], List[str]]:
+        """
+        استيراد العملاء من ملف Excel
+        
+        Returns:
+            tuple: (قائمة العملاء المستوردة, قائمة الأخطاء)
+        """
+        if not PANDAS_AVAILABLE:
+            return [], ["pandas غير متوفر. قم بتثبيته: pip install pandas openpyxl"]
+        
+        try:
+            # قراءة ملف Excel
+            df = pd.read_excel(filepath)
+            
+            clients_data = []
+            errors = []
+            
+            # التحقق من الأعمدة المطلوبة
+            required_columns = ['الاسم']
+            for col in required_columns:
+                if col not in df.columns:
+                    errors.append(f"العمود المطلوب '{col}' غير موجود في الملف")
+                    return [], errors
+            
+            # معالجة كل صف
+            for index, row in df.iterrows():
+                try:
+                    # التحقق من وجود الاسم
+                    if pd.isna(row.get('الاسم')) or not str(row.get('الاسم')).strip():
+                        errors.append(f"الصف {index + 2}: الاسم مطلوب")
+                        continue
+                    
+                    client_dict = {
+                        'name': str(row.get('الاسم', '')).strip(),
+                        'company_name': str(row.get('الشركة', '')) if not pd.isna(row.get('الشركة')) else None,
+                        'phone': str(row.get('الهاتف', '')) if not pd.isna(row.get('الهاتف')) else None,
+                        'email': str(row.get('البريد الإلكتروني', '')) if not pd.isna(row.get('البريد الإلكتروني')) else None,
+                        'address': str(row.get('العنوان', '')) if not pd.isna(row.get('العنوان')) else None,
+                        'country': str(row.get('الدولة', '')) if not pd.isna(row.get('الدولة')) else None,
+                        'client_type': str(row.get('نوع العميل', 'فرد')) if not pd.isna(row.get('نوع العميل')) else 'فرد',
+                        'work_field': str(row.get('مجال العمل', '')) if not pd.isna(row.get('مجال العمل')) else None,
+                        'vat_number': str(row.get('الرقم الضريبي', '')) if not pd.isna(row.get('الرقم الضريبي')) else None,
+                        'status': 'نشط'  # افتراضياً نشط
+                    }
+                    
+                    clients_data.append(client_dict)
+                    
+                except Exception as e:
+                    errors.append(f"الصف {index + 2}: خطأ في المعالجة - {str(e)}")
+            
+            return clients_data, errors
+            
+        except Exception as e:
+            return [], [f"خطأ في قراءة الملف: {str(e)}"]
+    
     def export_projects_to_excel(self, projects: List) -> Optional[str]:
         """تصدير المشاريع إلى Excel"""
         data = []

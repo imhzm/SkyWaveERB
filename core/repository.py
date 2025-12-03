@@ -584,7 +584,12 @@ class Repository:
             try:
                 clients_data = list(self.mongo_db.clients.find({"status": active_status}))
                 # تحويل الداتا لـ Pydantic models
-                clients_list = [schemas.Client(**c, _mongo_id=str(c.pop('_id'))) for c in clients_data]
+                clients_list = []
+                for c in clients_data:
+                    mongo_id = str(c.pop('_id'))
+                    c.pop('_mongo_id', None)
+                    c.pop('mongo_id', None)
+                    clients_list.append(schemas.Client(**c, _mongo_id=mongo_id))
                 print(f"INFO: تم جلب {len(clients_list)} عميل 'نشط' من الأونلاين (MongoDB).")
                 # (هنا ممكن نضيف لوجيك لتحديث الـ SQLite لو فيه وقت)
                 return clients_list
@@ -605,7 +610,12 @@ class Repository:
         if self.online:
             try:
                 clients_data = list(self.mongo_db.clients.find({"status": archived_status}))
-                clients_list = [schemas.Client(**c, _mongo_id=str(c.pop('_id'))) for c in clients_data]
+                clients_list = []
+                for c in clients_data:
+                    mongo_id = str(c.pop('_id'))
+                    c.pop('_mongo_id', None)
+                    c.pop('mongo_id', None)
+                    clients_list.append(schemas.Client(**c, _mongo_id=mongo_id))
                 return clients_list
             except Exception as e:
                 print(f"ERROR: فشل جلب العملاء المؤرشفين (Mongo): {e}.")
@@ -621,7 +631,10 @@ class Repository:
                 lookup_id = self._to_objectid(client_id)
                 client_data = self.mongo_db.clients.find_one({"_id": lookup_id})
                 if client_data:
-                    client = schemas.Client(**client_data, _mongo_id=str(client_data.pop('_id')))
+                    mongo_id = str(client_data.pop('_id'))
+                    client_data.pop('_mongo_id', None)
+                    client_data.pop('mongo_id', None)
+                    client = schemas.Client(**client_data, _mongo_id=mongo_id)
                     print(f"INFO: تم جلب العميل (MongoID: {client_id}) من الأونلاين.")
                     return client
             except Exception as e:
@@ -794,7 +807,10 @@ class Repository:
             try:
                 client_data = self.mongo_db.clients.find_one({"name": name})
                 if client_data:
-                    client = schemas.Client(**client_data, _mongo_id=str(client_data.pop('_id')))
+                    mongo_id = str(client_data.pop('_id'))
+                    client_data.pop('_mongo_id', None)
+                    client_data.pop('mongo_id', None)
+                    client = schemas.Client(**client_data, _mongo_id=mongo_id)
                     print(f"INFO: تم جلب العميل (Name: {name}) من الأونلاين.")
                     return client
             except Exception as e:
@@ -885,6 +901,8 @@ class Repository:
                 account_data = self.mongo_db.accounts.find_one({"code": code})
                 if account_data:
                     mongo_id = str(account_data.pop('_id'))
+                    account_data.pop('_mongo_id', None)
+                    account_data.pop('mongo_id', None)
                     account = schemas.Account(**account_data, _mongo_id=mongo_id)
                     print(f"INFO: تم جلب الحساب (Code: {code}) من الأونلاين.")
                     return account
@@ -913,7 +931,12 @@ class Repository:
             try:
                 accounts_data = list(self.mongo_db.accounts.find())
                 if accounts_data:
-                    accounts_list = [schemas.Account(**acc, _mongo_id=str(acc.pop('_id'))) for acc in accounts_data]
+                    accounts_list = []
+                    for acc in accounts_data:
+                        mongo_id = str(acc.pop('_id'))
+                        acc.pop('_mongo_id', None)
+                        acc.pop('mongo_id', None)
+                        accounts_list.append(schemas.Account(**acc, _mongo_id=mongo_id))
                     print(f"INFO: تم جلب {len(accounts_list)} حساب من الأونلاين (MongoDB).")
                     return accounts_list
             except Exception as e:
@@ -944,7 +967,10 @@ class Repository:
                     {"$or": [{"_id": self._to_objectid(account_id)}, {"_mongo_id": account_id}, {"id": account_id_num}]}
                 )
                 if data:
-                    return schemas.Account(**data, _mongo_id=str(data.pop('_id')))
+                    mongo_id = str(data.pop('_id'))
+                    data.pop('_mongo_id', None)
+                    data.pop('mongo_id', None)
+                    return schemas.Account(**data, _mongo_id=mongo_id)
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب الحساب {account_id} (Mongo): {e}")
 
@@ -1331,7 +1357,12 @@ class Repository:
         if self.online:
             try:
                 invoices_data = list(self.mongo_db.invoices.find())
-                invoices_list = [schemas.Invoice(**inv, _mongo_id=str(inv.pop('_id'))) for inv in invoices_data]
+                invoices_list = []
+                for inv in invoices_data:
+                    mongo_id = str(inv.pop('_id'))
+                    inv.pop('_mongo_id', None)
+                    inv.pop('mongo_id', None)
+                    invoices_list.append(schemas.Invoice(**inv, _mongo_id=mongo_id))
                 print("INFO: تم جلب الفواتير من الأونلاين (MongoDB).")
                 return invoices_list
             except Exception as e:
@@ -1409,7 +1440,12 @@ class Repository:
         if self.online:
             try:
                 entries_data = list(self.mongo_db.journal_entries.find().sort("date", -1))
-                entries_list = [schemas.JournalEntry(**entry, _mongo_id=str(entry.pop('_id'))) for entry in entries_data]
+                entries_list = []
+                for entry in entries_data:
+                    mongo_id = str(entry.pop('_id'))
+                    entry.pop('_mongo_id', None)
+                    entry.pop('mongo_id', None)
+                    entries_list.append(schemas.JournalEntry(**entry, _mongo_id=mongo_id))
                 print("INFO: تم جلب قيود اليومية من الأونلاين (MongoDB).")
                 return entries_list
             except Exception as e:
@@ -1433,6 +1469,8 @@ class Repository:
                 data = self.mongo_db.journal_entries.find_one({"related_document_id": doc_id})
                 if data:
                     mongo_id = str(data.pop('_id'))
+                    data.pop('_mongo_id', None)
+                    data.pop('mongo_id', None)
                     return schemas.JournalEntry(**data, _mongo_id=mongo_id)
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب القيد (Mongo): {e}")
@@ -1512,7 +1550,14 @@ class Repository:
         if self.online:
             try:
                 data = list(self.mongo_db.payments.find(query_filter))
-                return [schemas.Payment(**d, _mongo_id=str(d.pop('_id'))) for d in data]
+                payments_list = []
+                for d in data:
+                    mongo_id = str(d.pop('_id'))
+                    # حذف _mongo_id و mongo_id من البيانات لتجنب التكرار
+                    d.pop('_mongo_id', None)
+                    d.pop('mongo_id', None)
+                    payments_list.append(schemas.Payment(**d, _mongo_id=mongo_id))
+                return payments_list
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب دفعات المشروع (Mongo): {e}")
 
@@ -1529,7 +1574,13 @@ class Repository:
         if self.online:
             try:
                 data = list(self.mongo_db.payments.find())
-                payments = [schemas.Payment(**d, _mongo_id=str(d.pop('_id'))) for d in data]
+                payments = []
+                for d in data:
+                    mongo_id = str(d.pop('_id'))
+                    # حذف _mongo_id و mongo_id من البيانات لتجنب التكرار
+                    d.pop('_mongo_id', None)
+                    d.pop('mongo_id', None)
+                    payments.append(schemas.Payment(**d, _mongo_id=mongo_id))
                 print(f"INFO: [Repo] تم جلب {len(payments)} دفعة من MongoDB.")
                 return payments
             except Exception as e:
@@ -1780,6 +1831,8 @@ class Repository:
                 data = self.mongo_db.invoices.find_one({"invoice_number": invoice_number})
                 if data:
                     mongo_id = str(data.pop('_id'))
+                    data.pop('_mongo_id', None)
+                    data.pop('mongo_id', None)
                     return schemas.Invoice(**data, _mongo_id=mongo_id)
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب الفاتورة {invoice_number} (Mongo): {e}")
@@ -1906,7 +1959,12 @@ class Repository:
         if self.online:
             try:
                 services_data = list(self.mongo_db.services.find({"status": active_status}))
-                services_list = [schemas.Service(**s, _mongo_id=str(s.pop('_id'))) for s in services_data]
+                services_list = []
+                for s in services_data:
+                    mongo_id = str(s.pop('_id'))
+                    s.pop('_mongo_id', None)
+                    s.pop('mongo_id', None)
+                    services_list.append(schemas.Service(**s, _mongo_id=mongo_id))
                 print(f"INFO: تم جلب {len(services_list)} خدمة 'نشطة' من الأونلاين.")
                 return services_list
             except Exception as e:
@@ -1930,6 +1988,8 @@ class Repository:
                 data = self.mongo_db.services.find_one({"$or": [{"_id": self._to_objectid(service_id)}, {"_mongo_id": service_id}]})
                 if data:
                     mongo_id = str(data.pop('_id'))
+                    data.pop('_mongo_id', None)
+                    data.pop('mongo_id', None)
                     return schemas.Service(**data, _mongo_id=mongo_id)
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب الخدمة {service_id} (Mongo): {e}")
@@ -2018,7 +2078,13 @@ class Repository:
         if self.online:
             try:
                 services_data = list(self.mongo_db.services.find({"status": archived_status}))
-                return [schemas.Service(**s, _mongo_id=str(s.pop('_id'))) for s in services_data]
+                services_list = []
+                for s in services_data:
+                    mongo_id = str(s.pop('_id'))
+                    s.pop('_mongo_id', None)
+                    s.pop('mongo_id', None)
+                    services_list.append(schemas.Service(**s, _mongo_id=mongo_id))
+                return services_list
             except Exception as e:
                 print(f"ERROR: فشل جلب الخدمات المؤرشفة (Mongo): {e}.")
 
@@ -2080,7 +2146,12 @@ class Repository:
         if self.online:
             try:
                 expenses_data = list(self.mongo_db.expenses.find())
-                expenses_list = [schemas.Expense(**exp, _mongo_id=str(exp.pop('_id'))) for exp in expenses_data]
+                expenses_list = []
+                for exp in expenses_data:
+                    mongo_id = str(exp.pop('_id'))
+                    exp.pop('_mongo_id', None)
+                    exp.pop('mongo_id', None)
+                    expenses_list.append(schemas.Expense(**exp, _mongo_id=mongo_id))
                 print("INFO: تم جلب المصروفات من الأونلاين (MongoDB).")
                 return expenses_list
             except Exception as e:
@@ -2252,7 +2323,13 @@ class Repository:
         if self.online:
             try:
                 data = list(self.mongo_db.quotations.find().sort("issue_date", -1))
-                data_list = [schemas.Quotation(**d, _mongo_id=str(d.pop('_id'))) for d in data]
+                data_list = []
+                for d in data:
+                    mongo_id = str(d.pop('_id'))
+                    # حذف _mongo_id و mongo_id من البيانات لتجنب التكرار
+                    d.pop('_mongo_id', None)
+                    d.pop('mongo_id', None)
+                    data_list.append(schemas.Quotation(**d, _mongo_id=mongo_id))
                 print("INFO: تم جلب عروض الأسعار من الأونلاين (MongoDB).")
                 return data_list
             except Exception as e:
@@ -2275,7 +2352,10 @@ class Repository:
             try:
                 data = self.mongo_db.quotations.find_one({"quote_number": quote_number})
                 if data:
-                    return schemas.Quotation(**data, _mongo_id=str(data.pop('_id')))
+                    mongo_id = str(data.pop('_id'))
+                    data.pop('_mongo_id', None)
+                    data.pop('mongo_id', None)
+                    return schemas.Quotation(**data, _mongo_id=mongo_id)
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب عرض السعر {quote_number} (Mongo): {e}")
 
@@ -2441,6 +2521,9 @@ class Repository:
                         # إضافة status افتراضي
                         if 'status' not in d or d['status'] is None:
                             d['status'] = 'نشط'
+                        # حذف _mongo_id من البيانات إذا كان موجوداً لتجنب التكرار
+                        d.pop('_mongo_id', None)
+                        d.pop('mongo_id', None)
                         data_list.append(schemas.Project(**d, _mongo_id=mongo_id))
                     except Exception as item_err:
                         print(f"WARNING: تخطي مشروع بسبب خطأ: {item_err}")
@@ -2472,6 +2555,8 @@ class Repository:
                 data = self.mongo_db.projects.find_one({"name": project_name})
                 if data:
                     mongo_id = str(data.pop('_id'))
+                    data.pop('_mongo_id', None)
+                    data.pop('mongo_id', None)
                     return schemas.Project(**data, _mongo_id=mongo_id)
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب المشروع {project_name} (Mongo): {e}")
@@ -2588,7 +2673,14 @@ class Repository:
         if self.online:
             try:
                 data = list(self.mongo_db.invoices.find(query_filter))
-                return [schemas.Invoice(**d, _mongo_id=str(d.pop('_id'))) for d in data]
+                invoices_list = []
+                for d in data:
+                    mongo_id = str(d.pop('_id'))
+                    # حذف _mongo_id و mongo_id من البيانات لتجنب التكرار
+                    d.pop('_mongo_id', None)
+                    d.pop('mongo_id', None)
+                    invoices_list.append(schemas.Invoice(**d, _mongo_id=mongo_id))
+                return invoices_list
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب فواتير المشروع (Mongo): {e}")
 
@@ -2616,7 +2708,14 @@ class Repository:
         if self.online:
             try:
                 data = list(self.mongo_db.expenses.find(query_filter))
-                return [schemas.Expense(**d, _mongo_id=str(d.pop('_id'))) for d in data]
+                expenses_list = []
+                for d in data:
+                    mongo_id = str(d.pop('_id'))
+                    # حذف _mongo_id و mongo_id من البيانات لتجنب التكرار
+                    d.pop('_mongo_id', None)
+                    d.pop('mongo_id', None)
+                    expenses_list.append(schemas.Expense(**d, _mongo_id=mongo_id))
+                return expenses_list
             except Exception as e:
                 print(f"ERROR: [Repo] فشل جلب مصروفات المشروع (Mongo): {e}")
 

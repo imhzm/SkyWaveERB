@@ -45,12 +45,19 @@ class NotificationService:
         logger.info("تم تهيئة NotificationService")
     
     def _subscribe_to_events(self):
-        """الاشتراك في الأحداث المهمة لإنشاء إشعارات تلقائية"""
-        # إشعار عند تسجيل دفعة جديدة
+        """⚡ الاشتراك في جميع الأحداث المهمة لإنشاء إشعارات تلقائية"""
+        # إشعارات الدفعات
         self.event_bus.subscribe("PAYMENT_RECORDED", self._on_payment_recorded)
         
-        # إشعار عند فشل المزامنة
+        # إشعارات المزامنة
         self.event_bus.subscribe("SYNC_FAILED", self._on_sync_failed)
+        
+        # ⚡ إشعارات جديدة - آخر 10 أحداث
+        self.event_bus.subscribe("CLIENT_CREATED", self._on_client_created)
+        self.event_bus.subscribe("PROJECT_CREATED", self._on_project_created)
+        self.event_bus.subscribe("INVOICE_CREATED", self._on_invoice_created)
+        self.event_bus.subscribe("EXPENSE_CREATED", self._on_expense_created)
+        self.event_bus.subscribe("QUOTATION_CREATED", self._on_quotation_created)
         
         logger.debug("تم الاشتراك في أحداث الإشعارات")
     
