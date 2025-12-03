@@ -372,8 +372,8 @@ class Repository:
         # ⚡ إنشاء indexes لتحسين الأداء (مهم جداً للسرعة)
         self._create_sqlite_indexes()
         
-        # تحسين قاعدة البيانات
-        self._optimize_database()
+        # ⚡ تحسين قاعدة البيانات للأداء
+        self._optimize_sqlite_performance()
         
         # إنشاء collection و indexes في MongoDB إذا كان متصل
         if self.online:
@@ -420,6 +420,33 @@ class Repository:
             print("INFO: تم إنشاء indexes في SQLite بنجاح.")
         except Exception as e:
             print(f"WARNING: فشل إنشاء بعض indexes في SQLite: {e}")
+
+    def _optimize_sqlite_performance(self):
+        """
+        ⚡ تحسين أداء SQLite للسرعة القصوى
+        """
+        try:
+            print("INFO: جاري تحسين أداء قاعدة البيانات...")
+            
+            # تفعيل WAL mode للأداء الأفضل
+            self.sqlite_cursor.execute("PRAGMA journal_mode=WAL")
+            
+            # زيادة حجم الـ cache
+            self.sqlite_cursor.execute("PRAGMA cache_size=10000")
+            
+            # تفعيل memory-mapped I/O
+            self.sqlite_cursor.execute("PRAGMA mmap_size=268435456")  # 256MB
+            
+            # تحسين synchronous mode
+            self.sqlite_cursor.execute("PRAGMA synchronous=NORMAL")
+            
+            # تفعيل temp store في الذاكرة
+            self.sqlite_cursor.execute("PRAGMA temp_store=MEMORY")
+            
+            self.sqlite_conn.commit()
+            print("INFO: تم تحسين أداء قاعدة البيانات بنجاح.")
+        except Exception as e:
+            print(f"WARNING: فشل تحسين أداء قاعدة البيانات: {e}")
 
     def _init_mongo_indexes(self):
         """

@@ -67,12 +67,15 @@ class SkyWaveERPApp:
         self.sync_manager = SyncManager(self.repository)
         self.sync_manager.load_pending_items()  # تحميل العمليات المعلقة
         
-        # === المزامنة الذكية ثنائية الاتجاه ===
-        # تأجيل المزامنة لبعد فتح البرنامج لتجنب التجميد
-        # سيتم تشغيلها تلقائياً بعد 5 ثواني من فتح البرنامج
+        # ⚡ المزامنة التلقائية (Auto Sync) - Pull & Push
+        from core.auto_sync import AutoSync
+        self.auto_sync = AutoSync(self.repository)
+        # سيتم تشغيلها تلقائياً بعد 2 ثانية من فتح البرنامج
+        self.auto_sync.start_auto_sync(delay_seconds=2)
         
         logger.info("[MainApp] تم تجهيز المخزن (Repo) والإذاعة (Bus) والإعدادات.")
         logger.info("تم تهيئة مدير المزامنة (المزامنة التلقائية مفعلة)")
+        logger.info("⚡ المزامنة التلقائية (Pull & Push) ستبدأ بعد 2 ثانية")
 
         # --- 2. تجهيز "الأقسام" (حقن الاعتمادية) ---
         self.accounting_service = AccountingService(

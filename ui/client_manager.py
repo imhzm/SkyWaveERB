@@ -76,10 +76,13 @@ class ClientManagerTab(QWidget):
         table_layout = QVBoxLayout()
         table_groupbox.setLayout(table_layout)
 
-        # استخدام الجدول العادي (مؤقتاً حتى يتم حل مشكلة LazyTableWidget)
+        # استخدام الجدول العادي مع تفعيل الترتيب
         self.clients_table = QTableWidget()
         self.clients_table.setColumnCount(8)
         self.clients_table.setHorizontalHeaderLabels(["اللوجو", "الاسم", "الشركة", "الهاتف", "الإيميل", "💰 إجمالي الفواتير", "✅ إجمالي المدفوعات", "الحالة"])
+        
+        # ⚡ تفعيل الترتيب بالضغط على رأس العمود
+        self.clients_table.setSortingEnabled(True)
         
         # === UNIVERSAL SEARCH BAR ===
         from ui.universal_search import UniversalSearchBar
@@ -249,6 +252,8 @@ class ClientManagerTab(QWidget):
             else:
                 self.clients_list = self.client_service.get_all_clients()
 
+            # ⚡ تعطيل الترتيب مؤقتاً أثناء التحميل (للسرعة)
+            self.clients_table.setSortingEnabled(False)
             self.clients_table.setRowCount(0)
 
             # ⚡ حساب الإجماليات بدون جلب كل الفواتير (استعلام SQL مباشر محسّن)
@@ -305,51 +310,67 @@ class ClientManagerTab(QWidget):
                 self.clients_table.setItem(index, 3, QTableWidgetItem(client.email or ""))
                 self.clients_table.setItem(index, 4, QTableWidgetItem(client.phone or ""))
 
-                # ⚡ جلب ID العميل بطريقة صحيحة
+                # ⚡ جلب ID العميل بطريقة صحيحة - جرب كل الاحتمالات
                 client_id = None
-                if hasattr(client, '_mongo_id') and client._mongo_id:
+                client_name = client.name
+                
+                # محاولة 1: استخدام الاسم (لأن المشاريع بتستخدم الاسم كـ client_id)
+                total_invoices = client_invoices_total.get(client_name, 0.0)
+                total_payments = client_payments_total.get(client_name, 0.0)
+                
+                # محاولة 2: إذا مفيش نتيجة، جرب MongoDB ID
+                if total_invoices == 0.0 and hasattr(client, '_mongo_id') and client._mongo_id:
                     client_id = str(client._mongo_id)
-                elif hasattr(client, 'id') and client.id:
-                    client_id = str(client.id)
-                
-                # إجمالي الفواتير
-                total_invoices = 0.0
-                if client_id:
                     total_invoices = client_invoices_total.get(client_id, 0.0)
+                    total_payments = client_payments_total.get(client_id, 0.0)
                 
+                # محاولة 3: إذا لسه مفيش نتيجة، جرب SQLite ID
+                if total_invoices == 0.0 and hasattr(client, 'id') and client.id:
+                    client_id = str(client.id)
+                    total_invoices = client_invoices_total.get(client_id, 0.0)
+                    total_payments = client_payments_total.get(client_id, 0.0)
+                
+                # عرض إجمالي الفواتير (مع UserRole للترتيب الصحيح)
                 total_item = QTableWidgetItem(f"{total_invoices:,.0f} ج.م")
+                total_item.setData(Qt.ItemDataRole.UserRole, total_invoices)  # ⚡ للترتيب الرقمي
                 total_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 total_item.setForeground(QColor("#2454a5"))
                 total_item.setFont(QFont("Cairo", 10, QFont.Weight.Bold))
                 self.clients_table.setItem(index, 5, total_item)
 
-                # إجمالي المدفوعات
-                total_payments = 0.0
-                if client_id:
-                    total_payments = client_payments_total.get(client_id, 0.0)
-                
+                # عرض إجمالي المدفوعات (مع UserRole للترتيب الصحيح)
                 payment_item = QTableWidgetItem(f"{total_payments:,.0f} ج.م")
+                payment_item.setData(Qt.ItemDataRole.UserRole, total_payments)  # ⚡ للترتيب الرقمي
                 payment_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 payment_item.setForeground(QColor("#00a876"))
                 payment_item.setFont(QFont("Cairo", 10, QFont.Weight.Bold))
                 self.clients_table.setItem(index, 6, payment_item)
 
                 status_item = QTableWidgetItem(client.status.value)
-                if client.status == schemas.ClientStatus.ARCHIVED:
-                    status_item.setBackground(QColor("#ef4444"))
-                    status_item.setForeground(QColor("white"))
-                else:
-                    status_item.setBackground(QColor("#10b981"))
-                    status_item.setForeground(QColor("white"))
+                try:
+                    if client.status == schemas.ClientStatus.ARCHIVED:
+                        status_item.setBackground(QColor("#ef4444"))
+                        status_item.setForeground(QColor("white"))
+                    else:
+                        status_item.setBackground(QColor("#10b981"))
+                        status_item.setForeground(QColor("white"))
+                except Exception as e:
+                    print(f"WARNING: فشل تعيين لون الخلفية: {e}")
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.clients_table.setItem(index, 7, status_item)
 
             print(f"INFO: [ClientManager] تم جلب {len(self.clients_list)} عميل.")
+            
+            # ⚡ إعادة تفعيل الترتيب بعد التحميل
+            self.clients_table.setSortingEnabled(True)
+            
             self.selected_client = None
             self.update_buttons_state(False)
 
         except Exception as e:
             print(f"ERROR: [ClientManager] فشل تحميل العملاء: {e}")
+            # ⚡ إعادة تفعيل الترتيب حتى في حالة الخطأ
+            self.clients_table.setSortingEnabled(True)
 
     def open_editor(self, client_to_edit: Optional[schemas.Client]):
         dialog = ClientEditorDialog(

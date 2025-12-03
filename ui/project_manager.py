@@ -1048,6 +1048,9 @@ class ProjectManagerTab(QWidget):
         self.projects_table.setColumnCount(4)
         self.projects_table.setHorizontalHeaderLabels(["اسم المشروع", "العميل", "الحالة", "تاريخ البدء"])
         
+        # ⚡ تفعيل الترتيب بالضغط على رأس العمود
+        self.projects_table.setSortingEnabled(True)
+        
         self.search_bar = UniversalSearchBar(
             self.projects_table,
             placeholder="🔍 بحث (اسم المشروع، العميل، الحالة، التاريخ)..."
@@ -1241,6 +1244,9 @@ class ProjectManagerTab(QWidget):
     def load_projects_data(self):
         print("INFO: [ProjectManager] جاري تحميل بيانات المشاريع...")
         try:
+            # ⚡ تعطيل الترتيب مؤقتاً أثناء التحميل (للسرعة)
+            self.projects_table.setSortingEnabled(False)
+            
             if self.show_archived_checkbox.isChecked():
                 self.projects_list = self.project_service.get_archived_projects()
             else:
@@ -1254,9 +1260,14 @@ class ProjectManagerTab(QWidget):
                 self.projects_table.setItem(row, 2, QTableWidgetItem(project.status.value))
                 self.projects_table.setItem(row, 3, QTableWidgetItem(self._format_date(project.start_date)))
 
+            # ⚡ إعادة تفعيل الترتيب بعد التحميل
+            self.projects_table.setSortingEnabled(True)
+            
             self.on_project_selection_changed()
         except Exception as e:
             print(f"ERROR: [ProjectManager] فشل تحميل المشاريع: {e}")
+            # ⚡ إعادة تفعيل الترتيب حتى في حالة الخطأ
+            self.projects_table.setSortingEnabled(True)
 
     def _format_date(self, value) -> str:
         if not value:

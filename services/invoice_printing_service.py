@@ -294,69 +294,15 @@ class InvoicePrintingService:
         except Exception as e:
             print(f"WARNING: [InvoicePrintingService] فشل WeasyPrint: {e}")
         
-        # محاولة 2: استخدام Chrome Headless
-        try:
-            from selenium import webdriver
-            from selenium.webdriver.chrome.options import Options
-            import base64
-            
-            print(f"INFO: [InvoicePrintingService] استخدام Chrome Headless لتوليد PDF...")
-            
-            # حفظ HTML مؤقتاً
-            temp_html = str(self.exports_dir / f"{filename}_temp.html")
-            with open(temp_html, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-            
-            # إعداد Chrome
-            chrome_options = Options()
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            
-            # تشغيل Chrome
-            driver = webdriver.Chrome(options=chrome_options)
-            driver.get(f'file:///{os.path.abspath(temp_html)}')
-            
-            # ⚡ طباعة PDF بحجم A4 ثابت (لا يتغير)
-            pdf_data = driver.execute_cdp_cmd("Page.printToPDF", {
-                "printBackground": True,
-                "paperWidth": 8.27,  # A4 width in inches (210mm)
-                "paperHeight": 11.69,  # A4 height in inches (297mm)
-                "marginTop": 0,
-                "marginBottom": 0,
-                "marginLeft": 0,
-                "marginRight": 0,
-                "scale": 1.0,  # ⚡ تثبيت المقياس
-                "preferCSSPageSize": False,  # ⚡ تجاهل CSS page size
-                "displayHeaderFooter": False
-            })
-            
-            # حفظ PDF
-            with open(pdf_path, 'wb') as f:
-                f.write(base64.b64decode(pdf_data['data']))
-            
-            driver.quit()
-            
-            # حذف HTML المؤقت
-            try:
-                os.remove(temp_html)
-            except:
-                pass
-            
-            print(f"✅ [InvoicePrintingService] تم إنشاء PDF باستخدام Chrome")
-            return pdf_path
-            
-        except Exception as e:
-            print(f"WARNING: [InvoicePrintingService] فشل Chrome Headless: {e}")
-        
-        # الحل الأخير: حفظ HTML فقط
+        # محاولة 2: حفظ HTML مباشرة (أسرع بكتير)
         html_path = str(self.exports_dir / f"{filename}.html")
         try:
+            print(f"INFO: [InvoicePrintingService] حفظ HTML للطباعة السريعة...")
             with open(html_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
-            print(f"INFO: [InvoicePrintingService] تم حفظ HTML بدلاً من PDF: {html_path}")
+            print(f"✅ [InvoicePrintingService] تم حفظ HTML: {html_path}")
+            print(f"💡 افتح الملف في المتصفح واطبع (Ctrl+P) للحصول على PDF")
             return html_path
             
         except Exception as e:
