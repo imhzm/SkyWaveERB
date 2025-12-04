@@ -996,6 +996,13 @@ class Repository:
 
     def get_all_accounts(self) -> List[schemas.Account]:
         """ جلب كل الحسابات (بذكاء) - يفضل MongoDB لكن يستخدم SQLite كـ fallback """
+        # ⚡ منع التجميد
+        try:
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
+        except Exception:
+            pass
+            
         accounts_list = []
         
         # محاولة الجلب من MongoDB أولاً
@@ -1509,6 +1516,13 @@ class Repository:
 
     def get_all_journal_entries(self) -> List[schemas.JournalEntry]:
         """ جلب كل قيود اليومية (بذكاء) """
+        # ⚡ منع التجميد
+        try:
+            from PyQt6.QtWidgets import QApplication
+            QApplication.processEvents()
+        except Exception:
+            pass
+            
         if self.online:
             try:
                 entries_data = list(self.mongo_db.journal_entries.find().sort("date", -1))
