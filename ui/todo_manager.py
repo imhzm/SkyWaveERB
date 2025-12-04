@@ -126,52 +126,198 @@ class Task:
 
 
 class TaskService:
-    """خدمة إدارة المهام"""
+    """
+    خدمة إدارة المهام - مرتبطة بقاعدة البيانات
+    تستخدم Repository للحفظ في SQLite و MongoDB
+    """
     
-    def __init__(self, storage_path: str = "tasks.json"):
-        self.storage_path = storage_path
+    _instance = None
+    _repository = None
+    
+    def __new__(cls, repository=None):
+        """Singleton pattern لضمان استخدام نفس الـ instance"""
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
+    def __init__(self, repository=None):
+        if self._initialized:
+            return
+        
+        self._initialized = True
         self.tasks: List[Task] = []
+        
+        # استخدام Repository المُمرر أو إنشاء واحد جديد
+        if repository:
+            self._repository = repository
+        else:
+            try:
+                from core.repository import Repository
+                self._repository = Repository()
+            except Exception as e:
+                print(f"WARNING: [TaskService] فشل الاتصال بقاعدة البيانات: {e}")
+                self._repository = None
+        
         self.load_tasks()
     
+    @classmethod
+    def set_repository(cls, repository):
+        """تعيين Repository من الخارج"""
+        cls._repository = repository
+        if cls._instance:
+            cls._instance.load_tasks()
+    
     def load_tasks(self):
-        """تحميل المهام من الملف"""
+        """تحميل المهام من قاعدة البيانات"""
         try:
-            if os.path.exists(self.storage_path):
-                with open(self.storage_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    self.tasks = [Task.from_dict(t) for t in data]
-                print(f"INFO: [TaskService] تم تحميل {len(self.tasks)} مهمة")
+            if self._repository:
+                tasks_data = self._repository.get_all_tasks()
+                self.tasks = [self._dict_to_task(t) for t in tasks_data]
+                print(f"INFO: [TaskService] تم تحميل {len(self.tasks)} مهمة من قاعدة البيانات")
+            else:
+                # Fallback للملف المحلي إذا لم يكن هناك Repository
+                self._load_from_file()
         except Exception as e:
             print(f"ERROR: [TaskService] فشل تحميل المهام: {e}")
             self.tasks = []
     
-    def save_tasks(self):
-        """حفظ المهام في الملف"""
+    def _load_from_file(self):
+        """تحميل من ملف JSON (للتوافق مع الإصدارات القديمة)"""
+        storage_path = "tasks.json"
         try:
-            with open(self.storage_path, 'w', encoding='utf-8') as f:
-                json.dump([t.to_dict() for t in self.tasks], f, ensure_ascii=False, indent=2)
-            print(f"INFO: [TaskService] تم حفظ {len(self.tasks)} مهمة")
+            if os.path.exists(storage_path):
+                with open(storage_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.tasks = [Task.from_dict(t) for t in data]
+                print(f"INFO: [TaskService] تم تحميل {len(self.tasks)} مهمة من الملف المحلي")
         except Exception as e:
-            print(f"ERROR: [TaskService] فشل حفظ المهام: {e}")
+            print(f"ERROR: [TaskService] فشل تحميل المهام من الملف: {e}")
+            self.tasks = []
+    
+    def _dict_to_task(self, data: dict) -> Task:
+        """تحويل dict من قاعدة البيانات إلى Task object"""
+        try:
+            due_date = None
+            if data.get('due_date'):
+                if isinstance(data['due_date'], str):
+                    due_date = datetime.fromisoformat(data['due_date'].replace('Z', '+00:00'))
+                else:
+                    due_date = data['due_date']
+            
+            completed_at = None
+            if data.get('completed_at'):
+                if isinstance(data['completed_at'], str):
+                    completed_at = datetime.fromisoformat(data['completed_at'].replace('Z', '+00:00'))
+                else:
+                    completed_at = data['completed_at']
+            
+            created_at = datetime.now()
+            if data.get('created_at'):
+                if isinstance(data['created_at'], str):
+                    created_at = datetime.fromisoformat(data['created_at'].replace('Z', '+00:00'))
+                else:
+                    created_at = data['created_at']
+            
+            return Task(
+                id=str(data.get('id', '')),
+                title=data.get('title', ''),
+                description=data.get('description', ''),
+                priority=TaskPriority[data.get('priority', 'MEDIUM')],
+                status=TaskStatus[data.get('status', 'TODO')],
+                category=TaskCategory[data.get('category', 'GENERAL')],
+                due_date=due_date,
+                due_time=data.get('due_time'),
+                created_at=created_at,
+                completed_at=completed_at,
+                related_project=data.get('related_project_id', ''),
+                related_client=data.get('related_client_id', ''),
+                tags=data.get('tags', []),
+                reminder=data.get('reminder', False),
+                reminder_minutes=data.get('reminder_minutes', 30)
+            )
+        except Exception as e:
+            print(f"ERROR: [TaskService] فشل تحويل المهمة: {e}")
+            return Task(id=str(data.get('id', '')), title=data.get('title', 'مهمة'))
+    
+    def _task_to_dict(self, task: Task) -> dict:
+        """تحويل Task object إلى dict لقاعدة البيانات"""
+        return {
+            'id': task.id,
+            'title': task.title,
+            'description': task.description,
+            'priority': task.priority.name,
+            'status': task.status.name,
+            'category': task.category.name,
+            'due_date': task.due_date.isoformat() if task.due_date else None,
+            'due_time': task.due_time,
+            'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+            'related_project_id': task.related_project,
+            'related_client_id': task.related_client,
+            'tags': task.tags,
+            'reminder': task.reminder,
+            'reminder_minutes': task.reminder_minutes
+        }
     
     def add_task(self, task: Task) -> Task:
         """إضافة مهمة جديدة"""
-        self.tasks.append(task)
-        self.save_tasks()
-        return task
+        try:
+            if self._repository:
+                task_dict = self._task_to_dict(task)
+                result = self._repository.create_task(task_dict)
+                task.id = result.get('id', task.id)
+            
+            self.tasks.append(task)
+            # ⚡ إرسال إشارة التحديث
+            try:
+                from core.signals import app_signals
+                app_signals.emit_data_changed('tasks')
+            except Exception:
+                pass
+            print(f"INFO: [TaskService] تم إضافة مهمة: {task.title}")
+            return task
+        except Exception as e:
+            print(f"ERROR: [TaskService] فشل إضافة المهمة: {e}")
+            return task
     
     def update_task(self, task: Task):
         """تحديث مهمة"""
-        for i, t in enumerate(self.tasks):
-            if t.id == task.id:
-                self.tasks[i] = task
-                break
-        self.save_tasks()
+        try:
+            if self._repository:
+                task_dict = self._task_to_dict(task)
+                self._repository.update_task(task.id, task_dict)
+            
+            for i, t in enumerate(self.tasks):
+                if t.id == task.id:
+                    self.tasks[i] = task
+                    break
+            
+            # ⚡ إرسال إشارة التحديث
+            try:
+                from core.signals import app_signals
+                app_signals.emit_data_changed('tasks')
+            except Exception:
+                pass
+            print(f"INFO: [TaskService] تم تحديث مهمة: {task.title}")
+        except Exception as e:
+            print(f"ERROR: [TaskService] فشل تحديث المهمة: {e}")
     
     def delete_task(self, task_id: str):
         """حذف مهمة"""
-        self.tasks = [t for t in self.tasks if t.id != task_id]
-        self.save_tasks()
+        try:
+            if self._repository:
+                self._repository.delete_task(task_id)
+            
+            self.tasks = [t for t in self.tasks if t.id != task_id]
+            # ⚡ إرسال إشارة التحديث
+            try:
+                from core.signals import app_signals
+                app_signals.emit_data_changed('tasks')
+            except Exception:
+                pass
+            print(f"INFO: [TaskService] تم حذف مهمة (ID: {task_id})")
+        except Exception as e:
+            print(f"ERROR: [TaskService] فشل حذف المهمة: {e}")
     
     def get_task(self, task_id: str) -> Optional[Task]:
         """الحصول على مهمة بالـ ID"""
@@ -212,6 +358,14 @@ class TaskService:
                 if t.due_date and now <= t.due_date <= end_date 
                 and t.status not in [TaskStatus.COMPLETED, TaskStatus.CANCELLED]]
     
+    def get_tasks_by_project(self, project_id: str) -> List[Task]:
+        """الحصول على المهام المرتبطة بمشروع"""
+        return [t for t in self.tasks if t.related_project == project_id]
+    
+    def get_tasks_by_client(self, client_id: str) -> List[Task]:
+        """الحصول على المهام المرتبطة بعميل"""
+        return [t for t in self.tasks if t.related_client == client_id]
+    
     def get_statistics(self) -> Dict:
         """الحصول على إحصائيات المهام"""
         total = len(self.tasks)
@@ -233,6 +387,10 @@ class TaskService:
         """توليد ID فريد"""
         import uuid
         return str(uuid.uuid4())[:8]
+    
+    def refresh(self):
+        """تحديث المهام من قاعدة البيانات"""
+        self.load_tasks()
 
 
 
@@ -433,10 +591,14 @@ class TaskItemWidget(QFrame):
             self.status_changed.emit(self.task.id, TaskStatus.TODO)
     
     def mousePressEvent(self, event):
-        """معالج الضغط على المهمة"""
+        """معالج الضغط على المهمة (لا يفتح التعديل - فقط للتحديد)"""
+        super().mousePressEvent(event)
+    
+    def mouseDoubleClickEvent(self, event):
+        """معالج الدابل كليك على المهمة - يفتح نافذة التعديل"""
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.task.id)
-        super().mousePressEvent(event)
+        super().mouseDoubleClickEvent(event)
 
 
 class TaskEditorDialog(QDialog):
@@ -705,10 +867,22 @@ class TodoManagerWidget(QWidget):
         self.init_ui()
         self.load_tasks()
         
+        # ⚡ الاستماع لإشارات تحديث البيانات (لتحديث القائمة أوتوماتيك)
+        try:
+            from core.signals import app_signals
+            app_signals.tasks_changed.connect(self._on_tasks_changed)
+        except Exception as e:
+            print(f"WARNING: [TodoManager] فشل ربط الإشارات: {e}")
+        
         # تحديث دوري للمهام المتأخرة
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.check_reminders)
         self.update_timer.start(60000)  # كل دقيقة
+    
+    def _on_tasks_changed(self):
+        """معالج تحديث المهام من مصدر خارجي"""
+        self.task_service.load_tasks()
+        self.load_tasks()
     
     def init_ui(self):
         """تهيئة الواجهة"""

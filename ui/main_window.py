@@ -260,8 +260,10 @@ class MainWindow(QMainWindow):
         )
         self.tabs.insertTab(7, self.accounting_tab, "📊 المحاسبة")
         
-        # (جديد) إضافة تاب إدارة المهام (TODO)
-        from ui.todo_manager import TodoManagerWidget
+        # (جديد) إضافة تاب إدارة المهام (TODO) - مرتبط بقاعدة البيانات
+        from ui.todo_manager import TodoManagerWidget, TaskService
+        # تمرير Repository لـ TaskService لربط المهام بقاعدة البيانات
+        TaskService.set_repository(self.accounting_service.repo)
         self.todo_tab = TodoManagerWidget()
         self.tabs.insertTab(8, self.todo_tab, "📋 المهام")
         
