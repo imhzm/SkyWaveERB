@@ -6,7 +6,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout,
     QHeaderView, QPushButton, QLabel, QMessageBox, QGroupBox,
-    QTreeView, QDialog
+    QTreeView, QDialog, QFrame, QSizePolicy
 )
 from PyQt6.QtGui import QStandardItemModel, QStandardItem, QColor, QFont
 from PyQt6.QtCore import Qt
@@ -96,7 +96,6 @@ class AccountingManagerTab(QWidget):
         self.setLayout(main_layout)
         
         # جعل التاب متجاوب مع حجم الشاشة
-        from PyQt6.QtWidgets import QSizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # تاب إدارة الحسابات (التاب الوحيد)
@@ -127,11 +126,9 @@ class AccountingManagerTab(QWidget):
         self.load_accounts_data()
     
     def resizeEvent(self, event):
-        """معالج تغيير حجم النافذة - لضبط الأعمدة"""
+        """معالج تغيير حجم النافذة"""
         super().resizeEvent(event)
-        # إعادة ضبط الأعمدة عند تغيير حجم النافذة
-        if hasattr(self, 'accounts_tree'):
-            self._setup_tree_columns()
+        # لا حاجة لإعادة ضبط الأعمدة - Stretch mode يتكفل بذلك
 
     # ==================== تاب إدارة الحسابات ====================
     def setup_accounts_tab(self, main_layout: QVBoxLayout):
@@ -161,11 +158,17 @@ class AccountingManagerTab(QWidget):
         self.create_defaults_btn.setStyleSheet(BUTTON_STYLES["info"])
         self.create_defaults_btn.clicked.connect(self.create_default_accounts)
 
+        self.fix_parents_btn = QPushButton("🔧 إصلاح الربط")
+        self.fix_parents_btn.setStyleSheet(BUTTON_STYLES["secondary"])
+        self.fix_parents_btn.setToolTip("إصلاح ربط الحسابات بالآباء الصحيحين")
+        self.fix_parents_btn.clicked.connect(self.fix_accounts_parents)
+
         buttons_layout.addWidget(self.add_account_btn)
         buttons_layout.addWidget(self.edit_account_btn)
         buttons_layout.addWidget(self.delete_account_btn)
         buttons_layout.addWidget(self.refresh_btn)
         buttons_layout.addWidget(self.create_defaults_btn)
+        buttons_layout.addWidget(self.fix_parents_btn)
         buttons_layout.addStretch()
         layout.addLayout(buttons_layout)
 
@@ -190,28 +193,18 @@ class AccountingManagerTab(QWidget):
         self.accounts_tree.setModel(self.accounts_model)
         self.accounts_tree.setAlternatingRowColors(True)
         
-        # إعداد عرض الأعمدة
-        header = self.accounts_tree.header()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # الكود
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # اسم الحساب
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # النوع
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)  # العملة
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # الرصيد
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # الحالة
-        
         # ✅ ستايل محسّن للجدول مع وضوح أفضل (ألوان SkyWave Brand)
         self.accounts_tree.setStyleSheet(CHART_OF_ACCOUNTS_TREE_STYLE)
         
         # تقليل المسافة البادئة للشجرة
-        self.accounts_tree.setIndentation(20)
+        self.accounts_tree.setIndentation(25)
         
         # جعل الـ tree متجاوب
-        from PyQt6.QtWidgets import QSizePolicy
         self.accounts_tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         # تكبير خط الشجرة
         font = self.accounts_tree.font()
-        font.setPointSize(11)
+        font.setPointSize(10)
         font.setFamily("Segoe UI")
         self.accounts_tree.setFont(font)
         
@@ -219,14 +212,29 @@ class AccountingManagerTab(QWidget):
         self.accounts_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.accounts_tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
-        # ضبط الأعمدة
-        self._setup_tree_columns()
-        
         # ✅ تحديد ارتفاع الصفوف بشكل ثابت
         self.accounts_tree.setUniformRowHeights(True)
+        
+        # ✅ إعداد الأعمدة بشكل صحيح
         header = self.accounts_tree.header()
-        header.setDefaultSectionSize(100)
         header.setMinimumHeight(40)
+        header.setDefaultSectionSize(100)
+        header.setStretchLastSection(True)  # آخر عمود يتمدد
+        
+        # ✅ ضبط عرض الأعمدة الثابتة
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)      # الكود
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)    # اسم الحساب - يتمدد
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)      # النوع
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)      # العملة
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)      # الرصيد
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)      # الحالة
+        
+        # ✅ تحديد عرض الأعمدة
+        self.accounts_tree.setColumnWidth(0, 80)    # الكود
+        self.accounts_tree.setColumnWidth(2, 100)   # النوع
+        self.accounts_tree.setColumnWidth(3, 60)    # العملة
+        self.accounts_tree.setColumnWidth(4, 120)   # الرصيد
+        self.accounts_tree.setColumnWidth(5, 80)    # الحالة
         
         # ✨ STEP 3: ENABLE LEDGER - Double Click for Ledger Window
         self.accounts_tree.doubleClicked.connect(self.open_ledger_window)
@@ -237,32 +245,16 @@ class AccountingManagerTab(QWidget):
         self.summary_panel = self.create_summary_panel()
 
         # --- ADD TO MAIN LAYOUT ---
-        # Note: In RTL layout, first widget goes to Right
-        main_h_layout.addWidget(tree_container, 3)  # Stretch factor 3 (75%)
-        main_h_layout.addWidget(self.summary_panel, 1)  # Stretch factor 1 (25%)
+        # في واجهة RTL: الجدول على اليمين، الملخص على اليسار
+        main_h_layout.addWidget(self.summary_panel, 0)  # Stretch factor 0 - حجم ثابت
+        main_h_layout.addWidget(tree_container, 1)      # Stretch factor 1 - يأخذ باقي المساحة
 
         layout.addLayout(main_h_layout)
 
     def _setup_tree_columns(self):
-        """ضبط أعمدة الشجرة بشكل متجاوب"""
-        header = self.accounts_tree.header()
-        header.setStretchLastSection(True)  # آخر عمود يتمدد
-        header.setMinimumSectionSize(60)
-        
-        # ✅ أعمدة ثابتة للكود والعملة والحالة، والباقي يتمدد
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # الكود
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # اسم الحساب - يتمدد
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)  # النوع
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)  # العملة
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)  # الرصيد
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)  # الحالة
-        
-        # ✅ تحديد عرض الأعمدة الثابتة
-        header.resizeSection(0, 80)    # الكود
-        header.resizeSection(2, 100)   # النوع
-        header.resizeSection(3, 60)    # العملة
-        header.resizeSection(4, 120)   # الرصيد
-        header.resizeSection(5, 80)    # الحالة
+        """ضبط أعمدة الشجرة - يتم استدعاؤها عند تغيير حجم النافذة"""
+        # الأعمدة تم ضبطها في setup_accounts_tab
+        pass
     
     def load_accounts_data(self):
         """
@@ -360,13 +352,13 @@ class AccountingManagerTab(QWidget):
                         item.setBackground(QColor(COLORS['bg_medium']))
                         item.setForeground(QColor(COLORS['text_secondary']))
                 
-                # ✨ تلوين الرصيد حسب القيمة
+                # ✨ تلوين الرصيد حسب القيمة - ألوان واضحة
                 if calculated_balance < 0:
-                    balance_item.setForeground(QColor("#ff3d00"))  # أحمر للسالب
+                    balance_item.setForeground(QColor("#ff6b6b"))  # أحمر فاتح للسالب
                 elif calculated_balance > 0:
-                    balance_item.setForeground(QColor("#0A6CF1"))  # أخضر للموجب
+                    balance_item.setForeground(QColor("#51cf66"))  # أخضر فاتح للموجب
                 else:
-                    balance_item.setForeground(QColor("#9ca3af"))  # رمادي للصفر
+                    balance_item.setForeground(QColor("#adb5bd"))  # رمادي فاتح للصفر
                 
                 # إضافة الصف للأب
                 parent_item.appendRow(row)
@@ -415,8 +407,8 @@ class AccountingManagerTab(QWidget):
             # Check if any account's code starts with this code (and is longer)
             if acc_code != code and acc_code.startswith(code):
                 return True
-            # Check parent_code attribute
-            parent_code = getattr(acc, 'parent_code', None) or getattr(acc, 'parent_id', None)
+            # Check parent_id attribute (قاعدة البيانات تستخدم parent_id)
+            parent_code = getattr(acc, 'parent_id', None) or getattr(acc, 'parent_code', None)
             if parent_code == code:
                 return True
         return False
@@ -617,19 +609,18 @@ class AccountingManagerTab(QWidget):
     # ✨ STEP 1: Summary Panel Creation
     def create_summary_panel(self):
         """إنشاء لوحة الملخص المالي"""
-        from PyQt6.QtWidgets import QFrame
-        
         panel = QFrame()
         # ✨ FORCE MINIMUM WIDTH for visibility
-        panel.setMinimumWidth(280)
-        panel.setMaximumWidth(350)
+        panel.setMinimumWidth(250)
+        panel.setMaximumWidth(320)
+        panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         panel.setStyleSheet(f"""
             QFrame {{
                 background-color: {COLORS['bg_light']};
                 border-left: 3px solid {COLORS['primary']};
                 border-radius: 10px;
-                padding: 15px;
-                min-width: 280px;
+                padding: 10px;
+                min-width: 250px;
             }}
         """)
         
@@ -831,25 +822,19 @@ class AccountingManagerTab(QWidget):
         """
         print("INFO: [AccManager] جاري تحديث الملخص المالي...")
         try:
-            # استخدام الأرصدة المحسوبة من tree_map إذا كانت متوفرة
-            if tree_map and isinstance(tree_map, dict) and len(tree_map) > 0:
-                # استخراج الأرصدة من الحسابات الرئيسية (الجذور)
-                total_assets = tree_map.get('1000', {}).get('total', 0.0)
-                total_liabilities = tree_map.get('2000', {}).get('total', 0.0)
-                total_equity = tree_map.get('3000', {}).get('total', 0.0)
-                total_revenue = tree_map.get('4000', {}).get('total', 0.0)
-                total_expenses = tree_map.get('5000', {}).get('total', 0.0)
-                print(f"DEBUG: [Summary] من tree_map - أصول:{total_assets}, إيرادات:{total_revenue}, مصروفات:{total_expenses}")
-            else:
-                # Fallback: استخدام الخدمة للحصول على الملخص
-                print("DEBUG: [Summary] tree_map فارغ - استخدام get_financial_summary")
-                summary = self.accounting_service.get_financial_summary()
-                total_assets = summary.get('assets', 0.0)
-                total_liabilities = summary.get('liabilities', 0.0)
-                total_equity = summary.get('equity', 0.0)
-                total_revenue = summary.get('revenue', 0.0)
-                total_expenses = summary.get('expenses', 0.0)
-                print(f"DEBUG: [Summary] من service - أصول:{total_assets}, إيرادات:{total_revenue}, مصروفات:{total_expenses}")
+            # إذا لم يتم تمرير tree_map أو كان فارغاً، نجلبه من الخدمة
+            if not tree_map or not isinstance(tree_map, dict) or len(tree_map) == 0:
+                print("DEBUG: [Summary] tree_map فارغ - جلب البيانات من الخدمة...")
+                tree_map = self.accounting_service.get_hierarchy_with_balances()
+            
+            # استخراج الأرصدة من الحسابات الرئيسية (الجذور)
+            total_assets = tree_map.get('1000', {}).get('total', 0.0)
+            total_liabilities = tree_map.get('2000', {}).get('total', 0.0)
+            total_equity = tree_map.get('3000', {}).get('total', 0.0)
+            total_revenue = tree_map.get('4000', {}).get('total', 0.0)
+            total_expenses = tree_map.get('5000', {}).get('total', 0.0)
+            
+            print(f"DEBUG: [Summary] أصول:{total_assets}, خصوم:{total_liabilities}, إيرادات:{total_revenue}, مصروفات:{total_expenses}")
             
             # حساب صافي الربح = الإيرادات - المصروفات
             net_profit = total_revenue - total_expenses
@@ -896,6 +881,53 @@ class AccountingManagerTab(QWidget):
             print(f"ERROR: [AccManager] فشل تحديث الملخص المالي: {e}")
             import traceback
             traceback.print_exc()
+
+    def fix_accounts_parents(self):
+        """إصلاح ربط الحسابات بالآباء الصحيحين"""
+        reply = QMessageBox.question(
+            self, "🔧 إصلاح ربط الحسابات",
+            "سيتم إصلاح ربط جميع الحسابات بالآباء الصحيحين.\n\n"
+            "هذا سيضمن أن:\n"
+            "• الحسابات الفرعية مرتبطة بالمجموعات الصحيحة\n"
+            "• شجرة الحسابات تعمل بشكل صحيح\n"
+            "• الأرصدة التراكمية تُحسب بشكل صحيح\n\n"
+            "هل تريد المتابعة؟",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.No:
+            return
+        
+        try:
+            # استدعاء دالة الإصلاح من الخدمة
+            result = self.accounting_service.fix_accounts_parent_codes()
+            
+            # إعادة تحميل البيانات
+            self.load_accounts_data()
+            
+            # عرض النتيجة
+            if result.get('success'):
+                QMessageBox.information(
+                    self,
+                    "✅ تم الإصلاح",
+                    f"تم إصلاح ربط الحسابات بنجاح!\n\n"
+                    f"📊 تم تحديث: {result.get('updated', 0)} حساب\n"
+                    f"⏭️ تم تخطي: {result.get('skipped', 0)} حساب (صحيح بالفعل)"
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "⚠️ تم مع أخطاء",
+                    f"تم الإصلاح مع بعض الأخطاء:\n\n"
+                    f"📊 تم تحديث: {result.get('updated', 0)} حساب\n"
+                    f"❌ أخطاء: {len(result.get('errors', []))}"
+                )
+                
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "❌ خطأ",
+                f"فشل إصلاح الحسابات:\n\n{str(e)}"
+            )
 
     # ✨ STEP 3: ENABLE LEDGER - Ledger Window Method
     def open_ledger_window(self, index):

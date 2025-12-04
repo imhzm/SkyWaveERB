@@ -27,6 +27,7 @@ class AutoSync:
         """
         self.repository = repository
         self.is_syncing = False
+        self.is_running = False  # ✅ للتحكم في إيقاف المزامنة
         self.last_sync_time = None
         self.sync_stats = {
             'pulled': 0,
@@ -34,6 +35,7 @@ class AutoSync:
             'failed': 0
         }
         self._batch_size = 50  # ⚡ حجم الدفعة للمزامنة
+        self._sync_thread = None  # ✅ مرجع للـ thread
     
     def start_auto_sync(self, delay_seconds: int = 3):
         """
@@ -42,24 +44,48 @@ class AutoSync:
         Args:
             delay_seconds: التأخير قبل بدء المزامنة (بالثواني)
         """
+        self.is_running = True
+        
         def sync_worker():
             time.sleep(delay_seconds)
+            if not self.is_running:
+                print("INFO: [AutoSync] تم إلغاء المزامنة قبل البدء")
+                return
             print("INFO: [AutoSync] ⚡ بدء المزامنة السريعة...")
             self.perform_sync()
         
         # تشغيل في thread منفصل بأولوية منخفضة
-        sync_thread = threading.Thread(
+        self._sync_thread = threading.Thread(
             target=sync_worker, 
             daemon=True, 
             name="AutoSyncThread"
         )
-        sync_thread.start()
+        self._sync_thread.start()
         print(f"INFO: [AutoSync] ⚡ جدولة المزامنة (بعد {delay_seconds} ثانية)")
+    
+    def stop_auto_sync(self):
+        """✅ إيقاف المزامنة التلقائية"""
+        print("INFO: [AutoSync] جاري إيقاف المزامنة التلقائية...")
+        self.is_running = False
+        self.is_syncing = False
+        
+        # انتظار انتهاء الـ thread إذا كان يعمل
+        if self._sync_thread and self._sync_thread.is_alive():
+            try:
+                self._sync_thread.join(timeout=2.0)  # انتظار 2 ثانية كحد أقصى
+            except Exception as e:
+                print(f"WARNING: [AutoSync] فشل انتظار انتهاء thread: {e}")
+        
+        print("INFO: [AutoSync] ✅ تم إيقاف المزامنة التلقائية")
     
     def perform_sync(self):
         """تنفيذ المزامنة الكاملة (Pull ثم Push)"""
         if self.is_syncing:
             print("WARNING: [AutoSync] المزامنة جارية بالفعل")
+            return
+        
+        if not self.is_running:
+            print("INFO: [AutoSync] المزامنة متوقفة - تم إلغاء العملية")
             return
         
         self.is_syncing = True
@@ -69,6 +95,11 @@ class AutoSync:
             # التحقق من الاتصال
             if not self.repository.online:
                 print("WARNING: [AutoSync] لا يوجد اتصال بالإنترنت - تم إلغاء المزامنة")
+                return
+            
+            # التحقق من أن المزامنة لا تزال مطلوبة
+            if not self.is_running:
+                print("INFO: [AutoSync] تم إيقاف المزامنة")
                 return
             
             print("=" * 80)

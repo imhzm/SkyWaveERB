@@ -84,7 +84,7 @@ class ClientManagerTab(QWidget):
         # استخدام الجدول العادي مع تفعيل الترتيب
         self.clients_table = QTableWidget()
         self.clients_table.setColumnCount(8)
-        self.clients_table.setHorizontalHeaderLabels(["اللوجو", "الاسم", "الشركة", "الهاتف", "الإيميل", "💰 إجمالي الفواتير", "✅ إجمالي المدفوعات", "الحالة"])
+        self.clients_table.setHorizontalHeaderLabels(["اللوجو", "الاسم", "الشركة", "الهاتف", "الإيميل", "💰 إجمالي المشاريع", "✅ إجمالي المدفوعات", "الحالة"])
         
         # ⚡ تفعيل الترتيب بالضغط على رأس العمود
         self.clients_table.setSortingEnabled(True)
@@ -273,32 +273,56 @@ class ClientManagerTab(QWidget):
             client_payments_total = {}
             
             try:
-                # ⚡ استعلام لحساب إجمالي الفواتير (total_amount) لكل عميل
-                # client_id في جدول المشاريع يخزن اسم العميل
+                # ⚡ استعلام لحساب إجمالي المشاريع (total_amount) لكل عميل
+                # نأخذ أحدث قيمة لكل مشروع بناءً على last_modified
                 self.client_service.repo.sqlite_cursor.execute("""
-                    SELECT p.client_id, SUM(COALESCE(p.total_amount, 0)) as total_invoices
-                    FROM projects p
-                    WHERE p.status != 'مؤرشف'
-                    GROUP BY p.client_id
+                    SELECT client_id, SUM(total_amount) as total_projects
+                    FROM (
+                        SELECT p1._mongo_id, p1.client_id, p1.total_amount
+                        FROM projects p1
+                        INNER JOIN (
+                            SELECT _mongo_id, MAX(last_modified) as max_date
+                            FROM projects
+                            WHERE _mongo_id IS NOT NULL AND _mongo_id != ''
+                            GROUP BY _mongo_id
+                        ) p2 ON p1._mongo_id = p2._mongo_id AND p1.last_modified = p2.max_date
+                        WHERE p1.status != 'مؤرشف' AND p1.status != 'ملغي'
+                        GROUP BY p1._mongo_id
+                    )
+                    GROUP BY client_id
                 """)
-                client_invoices_total = {str(row[0]): float(row[1]) if row[1] else 0.0 
+                client_projects_total = {str(row[0]): float(row[1]) if row[1] else 0.0 
                                         for row in self.client_service.repo.sqlite_cursor.fetchall()}
                 
-                # ⚡ استعلام لحساب إجمالي المدفوعات لكل عميل
-                # جدول الدفعات فيه client_id مباشرة (اسم العميل)
+                # ⚡ استعلام لحساب إجمالي المدفوعات لكل عميل من جدول الدفعات
+                # نأخذ أحدث قيمة لكل دفعة بناءً على last_modified
                 self.client_service.repo.sqlite_cursor.execute("""
-                    SELECT client_id, SUM(COALESCE(amount, 0)) as total_paid
-                    FROM payments
+                    SELECT client_id, SUM(amount) as total_paid
+                    FROM (
+                        SELECT p1._mongo_id, p1.client_id, p1.amount
+                        FROM payments p1
+                        INNER JOIN (
+                            SELECT _mongo_id, MAX(last_modified) as max_date
+                            FROM payments
+                            WHERE _mongo_id IS NOT NULL AND _mongo_id != ''
+                            GROUP BY _mongo_id
+                        ) p2 ON p1._mongo_id = p2._mongo_id AND p1.last_modified = p2.max_date
+                        WHERE p1.client_id IS NOT NULL AND p1.client_id != ''
+                        GROUP BY p1._mongo_id
+                    )
                     GROUP BY client_id
                 """)
                 client_payments_total = {str(row[0]): float(row[1]) if row[1] else 0.0 
                                         for row in self.client_service.repo.sqlite_cursor.fetchall()}
                 
+                # استخدام client_projects_total
+                client_invoices_total = client_projects_total
+                
                 print(f"INFO: [ClientManager] === إجماليات العملاء ===")
-                print(f"INFO: [ClientManager] فواتير: {len(client_invoices_total)} عميل")
+                print(f"INFO: [ClientManager] مشاريع: {len(client_invoices_total)} عميل")
                 print(f"INFO: [ClientManager] مدفوعات: {len(client_payments_total)} عميل")
                 for name, total in client_invoices_total.items():
-                    print(f"  📄 {name}: فواتير={total:,.0f}, مدفوعات={client_payments_total.get(name, 0):,.0f}")
+                    print(f"  📄 {name}: مشاريع={total:,.0f}, مدفوعات={client_payments_total.get(name, 0):,.0f}")
             except Exception as e:
                 print(f"ERROR: فشل حساب الإجماليات: {e}")
                 import traceback

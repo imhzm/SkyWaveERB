@@ -381,8 +381,22 @@ class SkyWaveERPApp:
         # ⚡ تفعيل التحديث التلقائي في الخلفية
         self._setup_auto_update(main_window)
         
+        # ✅ ربط إشارة الإغلاق لتنظيف الموارد
+        app.aboutToQuit.connect(self._cleanup_on_exit)
+        main_window.destroyed.connect(self._cleanup_on_exit)
+        
+        # ✅ تفعيل الإغلاق عند إغلاق آخر نافذة
+        app.setQuitOnLastWindowClosed(True)
+        
         logger.info("[MainApp] البرنامج يعمل الآن.")
-        sys.exit(app.exec())
+        
+        # تشغيل التطبيق
+        exit_code = app.exec()
+        
+        # ✅ تنظيف نهائي قبل الخروج
+        self._cleanup_on_exit()
+        
+        sys.exit(exit_code)
 
 
     def _setup_auto_update(self, main_window):
@@ -405,6 +419,52 @@ class SkyWaveERPApp:
         except Exception as e:
             logger.warning(f"[MainApp] فشل تفعيل التحديث التلقائي: {e}")
     
+    def _cleanup_on_exit(self):
+        """✅ تنظيف جميع الموارد عند إغلاق البرنامج"""
+        logger.info("[MainApp] جاري تنظيف الموارد قبل الإغلاق...")
+        
+        try:
+            # إيقاف المزامنة التلقائية
+            if hasattr(self, 'auto_sync') and self.auto_sync:
+                try:
+                    self.auto_sync.stop_auto_sync()
+                    logger.info("[MainApp] تم إيقاف المزامنة التلقائية")
+                except Exception as e:
+                    logger.warning(f"[MainApp] فشل إيقاف المزامنة التلقائية: {e}")
+            
+            # إيقاف خدمة التحديث التلقائي
+            if hasattr(self, 'auto_update_service') and self.auto_update_service:
+                try:
+                    self.auto_update_service.stop()
+                    logger.info("[MainApp] تم إيقاف خدمة التحديث التلقائي")
+                except Exception as e:
+                    logger.warning(f"[MainApp] فشل إيقاف خدمة التحديث: {e}")
+            
+            # إغلاق اتصال قاعدة البيانات
+            if hasattr(self, 'repository') and self.repository:
+                try:
+                    if hasattr(self.repository, 'close'):
+                        self.repository.close()
+                    elif hasattr(self.repository, 'sqlite_conn'):
+                        self.repository.sqlite_conn.close()
+                    logger.info("[MainApp] تم إغلاق اتصال قاعدة البيانات")
+                except Exception as e:
+                    logger.warning(f"[MainApp] فشل إغلاق قاعدة البيانات: {e}")
+            
+            # إيقاف مدير المزامنة المتقدم
+            if hasattr(self, 'advanced_sync_manager') and self.advanced_sync_manager:
+                try:
+                    if hasattr(self.advanced_sync_manager, 'stop'):
+                        self.advanced_sync_manager.stop()
+                    logger.info("[MainApp] تم إيقاف مدير المزامنة المتقدم")
+                except Exception as e:
+                    logger.warning(f"[MainApp] فشل إيقاف مدير المزامنة المتقدم: {e}")
+            
+            logger.info("[MainApp] ✅ تم تنظيف جميع الموارد بنجاح")
+            
+        except Exception as e:
+            logger.error(f"[MainApp] خطأ أثناء تنظيف الموارد: {e}")
+
     def _on_update_available(self, main_window, version, url, changelog):
         """عند توفر تحديث جديد"""
         from PyQt6.QtWidgets import QMessageBox

@@ -526,11 +526,18 @@ class Repository:
         1. يحفظ في SQLite دائماً (بحالة 'new_offline').
         2. يحاول الحفظ في Mongo لو فيه نت.
         """
-        # ✅ فحص التكرار قبل الإضافة
+        # ✅ فحص التكرار قبل الإضافة (بالاسم والهاتف)
         existing_client = self.get_client_by_name(client_data.name)
         if existing_client:
             print(f"WARNING: العميل '{client_data.name}' موجود بالفعل!")
             raise Exception(f"العميل '{client_data.name}' موجود بالفعل في النظام")
+        
+        # ✅ فحص التكرار بالهاتف أيضاً
+        if client_data.phone:
+            existing_by_phone = self._get_client_by_phone(client_data.phone)
+            if existing_by_phone:
+                print(f"WARNING: العميل برقم الهاتف '{client_data.phone}' موجود بالفعل!")
+                raise Exception(f"يوجد عميل آخر بنفس رقم الهاتف '{client_data.phone}'")
         
         now = datetime.now().isoformat()
         client_data.created_at = now
@@ -737,6 +744,45 @@ class Repository:
             pass
         return item_id
 
+    def _get_client_by_phone(self, phone: str) -> Optional[schemas.Client]:
+        """البحث عن عميل برقم الهاتف"""
+        if not phone:
+            return None
+        
+        # تنظيف رقم الهاتف
+        clean_phone = phone.strip().replace(" ", "").replace("-", "")
+        
+        if self.online:
+            try:
+                # البحث بالرقم الأصلي أو المنظف
+                client_data = self.mongo_db.clients.find_one({
+                    "$or": [
+                        {"phone": phone},
+                        {"phone": clean_phone}
+                    ],
+                    "status": {"$ne": schemas.ClientStatus.ARCHIVED.value}
+                })
+                if client_data:
+                    mongo_id = str(client_data.pop('_id'))
+                    client_data.pop('_mongo_id', None)
+                    client_data.pop('mongo_id', None)
+                    return schemas.Client(**client_data, _mongo_id=mongo_id)
+            except Exception as e:
+                print(f"WARNING: فشل البحث بالهاتف (Mongo): {e}")
+        
+        try:
+            self.sqlite_cursor.execute(
+                "SELECT * FROM clients WHERE (phone = ? OR phone = ?) AND status != ?",
+                (phone, clean_phone, schemas.ClientStatus.ARCHIVED.value)
+            )
+            row = self.sqlite_cursor.fetchone()
+            if row:
+                return schemas.Client(**dict(row))
+        except Exception as e:
+            print(f"WARNING: فشل البحث بالهاتف (SQLite): {e}")
+        
+        return None
+
     def archive_client_by_id(self, client_id: str) -> bool:
         """
         (جديدة) أرشفة عميل (Soft Delete) عن طريق تحديث حالته.
@@ -917,9 +963,11 @@ class Repository:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         currency_value = account_data.currency.value if account_data.currency else 'EGP'
+        # استخدام parent_code أو parent_id (أيهما موجود)
+        parent_value = account_data.parent_code or account_data.parent_id
         params = (
             account_data.sync_status, now_iso, now_iso, account_data.name, account_data.code,
-            account_data.type.value, account_data.parent_id, account_data.balance,
+            account_data.type.value, parent_value, account_data.balance,
             currency_value, account_data.description
         )
 

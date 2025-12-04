@@ -3,52 +3,39 @@
 شاشة بداية عصرية وخفيفة
 """
 
-from PyQt6.QtWidgets import QSplashScreen, QLabel, QVBoxLayout, QWidget
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRect, QRectF
-from PyQt6.QtGui import QPixmap, QFont, QPainter, QColor, QLinearGradient, QPen, QPainterPath, QRegion, QBitmap
+from PyQt6.QtWidgets import QSplashScreen
+from PyQt6.QtCore import Qt, QTimer, QRectF
+from PyQt6.QtGui import QPixmap, QFont, QPainter, QColor, QLinearGradient, QPen, QPainterPath, QRegion, QBitmap, QConicalGradient
 from core.resource_utils import get_resource_path
+import math
 import time
 
 
 class ModernSplash(QSplashScreen):
-    """⚡ شاشة بداية عصرية وسريعة"""
+    """شاشة بداية عصرية مع دائرة تحميل"""
     
     def __init__(self):
-        # ⚡ إنشاء خلفية بسيطة (داكنة من البداية)
+        # إنشاء خلفية
         pixmap = QPixmap(600, 400)
         pixmap.fill(QColor("#0a1929"))
         
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # رسم شكل بزوايا منحنية (curved) باستخدام QPainterPath
+        # رسم شكل بزوايا منحنية
         path = QPainterPath()
-        path.addRoundedRect(QRectF(0, 0, 600, 400), 40, 40)  # زوايا منحنية جداً
+        path.addRoundedRect(QRectF(0, 0, 600, 400), 40, 40)
         
-        # خلفية متدرجة بسيطة
+        # خلفية متدرجة
         gradient = QLinearGradient(0, 0, 0, 400)
         gradient.setColorAt(0, QColor("#0a1929"))
         gradient.setColorAt(1, QColor("#1a2332"))
         painter.fillPath(path, gradient)
         
-        # إطار بسيط مع زوايا منحنية (curved)
+        # إطار مع زوايا منحنية
         painter.setPen(QPen(QColor("#00d4ff"), 3))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
-        
-        # تحميل اللوجو
-        logo_path = get_resource_path("logo.png")
-        logo_pixmap = QPixmap(logo_path)
-        
-        if not logo_pixmap.isNull():
-            logo_pixmap = logo_pixmap.scaled(
-                180, 180,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            x = (600 - logo_pixmap.width()) // 2
-            y = 80
-            painter.drawPixmap(x, y, logo_pixmap)
         
         painter.end()
         
@@ -59,11 +46,10 @@ class ModernSplash(QSplashScreen):
             Qt.WindowType.FramelessWindowHint
         )
         
-        # منع الشفافية عشان ما يظهرش أي حاجة بيضاء تحت
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setWindowOpacity(1.0)
         
-        # تطبيق mask للزوايا المنحنية على النافذة نفسها
+        # تطبيق mask للزوايا المنحنية
         mask = QBitmap(600, 400)
         mask.fill(Qt.GlobalColor.color0)
         mask_painter = QPainter(mask)
@@ -76,9 +62,18 @@ class ModernSplash(QSplashScreen):
         mask_painter.end()
         self.setMask(QRegion(mask))
         
-        self.message_font = QFont("Cairo", 10, QFont.Weight.Bold)
         self.title_font = QFont("Cairo", 16, QFont.Weight.Bold)
-        self.current_message = ""
+        self.start_time = time.time()
+        
+        # تحميل اللوجو
+        logo_path = get_resource_path("logo.png")
+        self.logo_pixmap = QPixmap(logo_path)
+        if not self.logo_pixmap.isNull():
+            self.logo_pixmap = self.logo_pixmap.scaled(
+                180, 180,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
         
         # توسيط الشاشة
         from PyQt6.QtWidgets import QApplication
@@ -87,21 +82,15 @@ class ModernSplash(QSplashScreen):
         y = (screen.height() - 400) // 2
         self.move(x, y)
         
-        # Timer لتحديث الشريط باستمرار
+        # Timer لتحديث الدائرة
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.repaint)
-        self.timer.start(50)  # تحديث كل 50ms
+        self.timer.start(30)
         
         self.show()
     
     def show_message(self, message: str):
-        """عرض رسالة"""
-        self.current_message = message
-        self.showMessage(
-            message,
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
-            QColor("#00d4ff")
-        )
+        """تحديث الشاشة"""
         from PyQt6.QtWidgets import QApplication
         QApplication.processEvents()
     
@@ -109,34 +98,73 @@ class ModernSplash(QSplashScreen):
         """رسم المحتويات"""
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # العنوان
+        # رسم إطار نيون متحرك
+        elapsed = time.time() - self.start_time
+        self._draw_neon_border(painter, elapsed)
+        
+        # العنوان في الأعلى
         painter.setFont(self.title_font)
         painter.setPen(QColor("#ffffff"))
         painter.drawText(
-            QRect(0, 20, 600, 50),
+            QRectF(0, 25, 600, 50),
             Qt.AlignmentFlag.AlignHCenter,
             "Sky Wave ERP"
         )
         
-        # الرسالة
-        if self.current_message:
-            painter.setFont(self.message_font)
-            painter.setPen(QColor("#00d4ff"))
-            painter.drawText(
-                QRect(0, 320, 600, 40),
-                Qt.AlignmentFlag.AlignHCenter,
-                self.current_message
-            )
+        # اللوجو في المنتصف تماماً
+        if not self.logo_pixmap.isNull():
+            x = (600 - self.logo_pixmap.width()) // 2
+            y = (400 - self.logo_pixmap.height()) // 2 - 10
+            painter.drawPixmap(x, y, self.logo_pixmap)
         
-        # شريط تقدم بسيط ثابت (لا يختفي أبداً)
-        # رسم خلفية الشريط أولاً
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#1e293b"))
-        painter.drawRoundedRect(100, 370, 400, 6, 3, 3)
+        # دائرة التحميل الديناميكية في الأسفل
+        center_x = 300
+        center_y = 340
+        radius = 25
         
-        # رسم الشريط المتحرك
-        progress_width = int((time.time() * 150) % 400)
-        if progress_width < 80:  # منع الاختفاء الكامل
-            progress_width = 80
-        painter.setBrush(QColor("#00d4ff"))
-        painter.drawRoundedRect(100, 370, progress_width, 6, 3, 3)
+        # خلفية الدائرة
+        pen = QPen(QColor("#1e293b"))
+        pen.setWidth(5)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawEllipse(center_x - radius, center_y - radius, radius * 2, radius * 2)
+        
+        # دائرة التحميل المتحركة
+        start_angle = int(elapsed * 300) % 360
+        
+        pen = QPen(QColor("#00d4ff"))
+        pen.setWidth(5)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        
+        arc_rect = QRectF(center_x - radius, center_y - radius, radius * 2, radius * 2)
+        painter.drawArc(arc_rect, start_angle * 16, 270 * 16)
+    
+    def _draw_neon_border(self, painter, elapsed):
+        """رسم إطار نيون متحرك حول الشاشة"""
+        # حساب زاوية الدوران (سرعة متوسطة)
+        angle = (elapsed * 60) % 360  # 60 درجة في الثانية
+        
+        # إنشاء تدرج دائري متحرك
+        gradient = QConicalGradient(300, 200, angle)
+        gradient.setColorAt(0.0, QColor("#00d4ff"))
+        gradient.setColorAt(0.25, QColor("#0088ff"))
+        gradient.setColorAt(0.5, QColor("#00d4ff"))
+        gradient.setColorAt(0.75, QColor("#00ffff"))
+        gradient.setColorAt(1.0, QColor("#00d4ff"))
+        
+        # رسم الإطار الخارجي المتوهج (glow effect)
+        for i in range(3):
+            pen = QPen(gradient, 4 - i)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            
+            offset = i * 2
+            path = QPainterPath()
+            path.addRoundedRect(QRectF(3 + offset, 3 + offset, 594 - offset * 2, 394 - offset * 2), 38, 38)
+            painter.setOpacity(1.0 - i * 0.3)
+            painter.drawPath(path)
+        
+        painter.setOpacity(1.0)

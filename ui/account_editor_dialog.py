@@ -256,13 +256,21 @@ class AccountEditorDialog(QDialog):
         sorted_accounts = sorted(self.all_accounts, key=lambda x: str(x.code or ""))
         
         for acc in sorted_accounts:
+            if not acc.code:
+                continue
             # لا يمكن للحساب أن يكون أباً لنفسه
             if self.is_editing and acc.code == self.account_to_edit.code:
                 continue
             # لا يمكن للحساب أن يكون أباً لأحد أبنائه (منع الحلقات)
             if self.is_editing and self._is_descendant(acc.code, self.account_to_edit.code):
                 continue
-            display_text = f"{acc.code} - {acc.name}"
+            
+            # إضافة مسافة بادئة للحسابات الفرعية
+            indent = ""
+            if acc.parent_code:
+                indent = "  └─ "
+            
+            display_text = f"{indent}{acc.code} - {acc.name}"
             self.parent_combo.addItem(display_text, userData=str(acc.code))
     
     def _is_descendant(self, potential_child_code: str, parent_code: str) -> bool:
@@ -299,38 +307,33 @@ class AccountEditorDialog(QDialog):
                 break
         
         # 4. Parent Account - CRITICAL FIX
-        # تحويل parent_code إلى string للمقارنة الصحيحة
         parent_code = self.account_to_edit.parent_code
         if parent_code:
-            parent_code_str = str(parent_code)
-            # البحث عن الحساب الأب باستخدام findData مع تحويل النوع
-            index = self.parent_combo.findData(parent_code_str)
+            parent_code_str = str(parent_code).strip()
+            print(f"DEBUG: [AccountDialog] Searching for parent: '{parent_code_str}'")
             
-            if index >= 0:
-                self.parent_combo.setCurrentIndex(index)
-                print(f"SUCCESS: [AccountDialog] Parent found at index {index}: {parent_code_str}")
-            else:
-                # محاولة البحث يدوياً في حالة عدم التطابق
-                found = False
-                for i in range(self.parent_combo.count()):
-                    item_data = self.parent_combo.itemData(i)
-                    if item_data and str(item_data) == parent_code_str:
-                        self.parent_combo.setCurrentIndex(i)
-                        print(f"SUCCESS: [AccountDialog] Parent found manually at index {i}: {parent_code_str}")
-                        found = True
-                        break
-                
-                if not found:
-                    # إذا لم يتم العثور، نحاول إضافته يدوياً
-                    print(f"WARNING: [AccountDialog] Parent {parent_code_str} not found in combo, searching in all_accounts...")
-                    parent_account = next((acc for acc in self.all_accounts if str(acc.code) == parent_code_str), None)
-                    if parent_account:
-                        display_text = f"{parent_account.code} - {parent_account.name}"
-                        self.parent_combo.addItem(display_text, userData=str(parent_account.code))
-                        self.parent_combo.setCurrentIndex(self.parent_combo.count() - 1)
-                        print(f"SUCCESS: [AccountDialog] Added and selected parent: {parent_account.code}")
-                    else:
-                        print(f"ERROR: [AccountDialog] Parent account {parent_code_str} not found anywhere!")
+            # البحث في جميع عناصر الـ combo
+            found = False
+            for i in range(self.parent_combo.count()):
+                item_data = self.parent_combo.itemData(i)
+                if item_data and str(item_data).strip() == parent_code_str:
+                    self.parent_combo.setCurrentIndex(i)
+                    print(f"SUCCESS: [AccountDialog] Parent found at index {i}: {parent_code_str}")
+                    found = True
+                    break
+            
+            if not found:
+                # إذا لم يتم العثور، نحاول إضافته يدوياً
+                print(f"WARNING: [AccountDialog] Parent {parent_code_str} not found in combo")
+                parent_account = next((acc for acc in self.all_accounts if str(acc.code).strip() == parent_code_str), None)
+                if parent_account:
+                    indent = "  └─ " if parent_account.parent_code else ""
+                    display_text = f"{indent}{parent_account.code} - {parent_account.name}"
+                    self.parent_combo.addItem(display_text, userData=str(parent_account.code))
+                    self.parent_combo.setCurrentIndex(self.parent_combo.count() - 1)
+                    print(f"SUCCESS: [AccountDialog] Added and selected parent: {parent_account.code}")
+                else:
+                    print(f"ERROR: [AccountDialog] Parent account {parent_code_str} not found anywhere!")
         else:
             # No parent - set to "No Parent" (index 0)
             self.parent_combo.setCurrentIndex(0)

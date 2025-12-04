@@ -158,37 +158,29 @@ class AccountingService:
                     
                 node = tree_map[acc.code]
                 
-                # حساب الرصيد من القيود المحاسبية
+                # حساب الرصيد من القيود المحاسبية + الرصيد الافتتاحي
                 movements = account_movements.get(acc.code, {'debit': 0.0, 'credit': 0.0})
                 debit_total = movements['debit']
                 credit_total = movements['credit']
+                opening_balance = getattr(acc, 'balance', 0.0) or 0.0
                 
                 # حساب الرصيد حسب نوع الحساب
                 acc_type = acc.type.value if acc.type else 'ASSET'
                 if acc_type in ['ASSET', 'CASH', 'EXPENSE', 'أصول', 'أصول نقدية', 'مصروفات']:
-                    node['total'] = debit_total - credit_total
+                    node['total'] = opening_balance + debit_total - credit_total
                 else:
-                    node['total'] = credit_total - debit_total
+                    node['total'] = opening_balance + credit_total - debit_total
                 
-                # ربط الحساب بالأب - محاولة عدة طرق
+                # ربط الحساب بالأب - استخدام parent_id أو parent_code
+                # قاعدة البيانات تخزن في parent_id
                 parent_code = getattr(acc, 'parent_id', None) or getattr(acc, 'parent_code', None)
                 
-                # إذا لم يكن هناك parent_code، نحاول استنتاجه من الكود
-                if not parent_code and len(acc.code) > 1:
-                    # مثال: 1100 -> 1000, 1110 -> 1100, 5120 -> 5100
-                    possible_parent = acc.code[:-1] + '0' * (len(acc.code) - len(acc.code[:-1]))
-                    if len(acc.code) == 4:
-                        possible_parent = acc.code[:1] + '000'  # 1100 -> 1000
-                        if possible_parent != acc.code and possible_parent in tree_map:
-                            parent_code = possible_parent
-                        else:
-                            # جرب 1100 -> 1000 بطريقة أخرى
-                            possible_parent = acc.code[:2] + '00'  # 1120 -> 1100
-                            if possible_parent != acc.code and possible_parent in tree_map:
-                                parent_code = possible_parent
+                # تحويل إلى string للمقارنة
+                if parent_code:
+                    parent_code = str(parent_code).strip()
                 
-                if parent_code and str(parent_code) in tree_map and str(parent_code) != acc.code:
-                    tree_map[str(parent_code)]['children'].append(node)
+                if parent_code and parent_code in tree_map and parent_code != acc.code:
+                    tree_map[parent_code]['children'].append(node)
                     print(f"DEBUG: ربط {acc.code} ({acc.name}) بالأب {parent_code}")
             
             process_events()
@@ -1568,3 +1560,141 @@ class AccountingService:
         except Exception as e:
             print(f"ERROR: [AccountingService] فشل جلب أرصدة العملاء: {e}")
             return []
+
+    def fix_accounts_parent_codes(self) -> dict:
+        """
+        إصلاح ربط الحسابات بالآباء الصحيحين
+        
+        هذه الدالة تقوم بتحديث parent_code لجميع الحسابات بناءً على
+        الهيكل المنطقي لشجرة الحسابات (Sky Wave)
+        
+        Returns:
+            dict مع نتائج الإصلاح
+        """
+        print("=" * 60)
+        print("INFO: [AccountingService] إصلاح ربط الحسابات بالآباء...")
+        print("=" * 60)
+        
+        # خريطة الحسابات والآباء الصحيحين
+        CORRECT_PARENT_MAP = {
+            # الأصول
+            "1000": None,           # الأصول - جذر
+            "1100": "1000",         # النقدية والبنوك -> الأصول
+            "1101": "1100",         # الخزنة الرئيسية -> النقدية والبنوك
+            "1102": "1100",         # CIB Bank -> النقدية والبنوك
+            "1103": "1100",         # Vodafone Cash -> النقدية والبنوك
+            "1104": "1100",         # Instapay -> النقدية والبنوك
+            "1200": "1000",         # العملاء -> الأصول
+            
+            # الخصوم
+            "2000": None,           # الخصوم - جذر
+            "2100": "2000",         # ضريبة القيمة المضافة -> الخصوم
+            "2200": "2000",         # الموردون -> الخصوم
+            
+            # حقوق الملكية
+            "3000": None,           # حقوق الملكية - جذر
+            "3100": "3000",         # رأس المال -> حقوق الملكية
+            "3200": "3000",         # الأرباح المحتجزة -> حقوق الملكية
+            
+            # الإيرادات
+            "4000": None,           # الإيرادات - جذر
+            "4100": "4000",         # إيرادات سوشيال ميديا -> الإيرادات
+            "4200": "4000",         # إيرادات تصميم ومواقع -> الإيرادات
+            "4300": "4000",         # إيرادات حملات إعلانية -> الإيرادات
+            
+            # المصروفات
+            "5000": None,           # المصروفات - جذر
+            "5100": "5000",         # تكاليف الحملات -> المصروفات
+            "5101": "5100",         # شحن فيسبوك -> تكاليف الحملات
+            "5102": "5100",         # شحن جوجل -> تكاليف الحملات
+            "5103": "5100",         # سيرفرات ودومينات -> تكاليف الحملات
+            "5200": "5000",         # مصاريف إدارية -> المصروفات
+            "5201": "5200",         # رواتب الموظفين -> مصاريف إدارية
+            "5202": "5200",         # فريلانسرز -> مصاريف إدارية
+            "5203": "5200",         # إيجار ومرافق -> مصاريف إدارية
+            "5204": "5200",         # اشتراكات أدوات -> مصاريف إدارية
+            "5900": "5000",         # مصروفات متنوعة -> المصروفات
+        }
+        
+        updated_count = 0
+        skipped_count = 0
+        errors = []
+        
+        try:
+            # جلب جميع الحسابات
+            all_accounts = self.repo.get_all_accounts()
+            print(f"INFO: عدد الحسابات: {len(all_accounts)}")
+            
+            for acc in all_accounts:
+                if not acc.code:
+                    continue
+                
+                # الحصول على الأب الصحيح
+                correct_parent = CORRECT_PARENT_MAP.get(acc.code)
+                # قاعدة البيانات تستخدم parent_id
+                current_parent = getattr(acc, 'parent_id', None) or getattr(acc, 'parent_code', None)
+                
+                # إذا لم يكن الكود في الخريطة، نحاول استنتاج الأب
+                if acc.code not in CORRECT_PARENT_MAP:
+                    # استنتاج الأب من الكود (مثال: 1105 -> 1100)
+                    if len(acc.code) == 4:
+                        possible_parent = acc.code[:2] + "00"
+                        if possible_parent in CORRECT_PARENT_MAP or any(a.code == possible_parent for a in all_accounts):
+                            correct_parent = possible_parent
+                        else:
+                            possible_parent = acc.code[:1] + "000"
+                            if possible_parent in CORRECT_PARENT_MAP or any(a.code == possible_parent for a in all_accounts):
+                                correct_parent = possible_parent
+                
+                # التحقق مما إذا كان التحديث مطلوباً
+                current_str = str(current_parent).strip() if current_parent else None
+                correct_str = str(correct_parent).strip() if correct_parent else None
+                
+                if current_str != correct_str:
+                    try:
+                        account_id = acc._mongo_id or str(acc.id)
+                        
+                        # تحديث الحساب - استخدام parent_id لأن قاعدة البيانات تستخدمه
+                        updated_data = acc.model_copy(update={"parent_id": correct_parent, "parent_code": correct_parent})
+                        self.repo.update_account(account_id, updated_data)
+                        
+                        print(f"✅ تحديث {acc.code} ({acc.name}): {current_parent} -> {correct_parent}")
+                        updated_count += 1
+                        
+                    except Exception as e:
+                        error_msg = f"فشل تحديث {acc.code}: {e}"
+                        print(f"❌ {error_msg}")
+                        errors.append(error_msg)
+                else:
+                    skipped_count += 1
+            
+            print("\n" + "=" * 60)
+            print(f"✅ تم تحديث {updated_count} حساب")
+            print(f"⏭️  تم تخطي {skipped_count} حساب (صحيح بالفعل)")
+            if errors:
+                print(f"❌ فشل {len(errors)} عملية")
+            print("=" * 60)
+            
+            # إرسال إشارة التحديث
+            app_signals.emit_data_changed('accounts')
+            
+            return {
+                "success": len(errors) == 0,
+                "updated": updated_count,
+                "skipped": skipped_count,
+                "errors": errors,
+                "message": f"تم تحديث {updated_count} حساب"
+            }
+            
+        except Exception as e:
+            error_msg = f"فشل إصلاح الحسابات: {e}"
+            print(f"ERROR: [AccountingService] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "updated": updated_count,
+                "skipped": skipped_count,
+                "errors": errors + [error_msg],
+                "message": error_msg
+            }
