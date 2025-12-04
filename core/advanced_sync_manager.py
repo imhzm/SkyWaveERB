@@ -51,12 +51,12 @@ class ConnectionChecker(QThread):
                 # محاولة الاتصال بـ Google DNS
                 response = requests.get("https://8.8.8.8", timeout=5)
                 is_connected = response.status_code == 200
-            except:
+            except (requests.RequestException, OSError):
                 try:
                     # محاولة بديلة - ping MongoDB server
                     response = requests.get("https://cloud.mongodb.com", timeout=5)
                     is_connected = response.status_code == 200
-                except:
+                except (requests.RequestException, OSError):
                     is_connected = False
             
             # إرسال إشارة فقط عند تغيير الحالة

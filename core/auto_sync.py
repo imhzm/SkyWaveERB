@@ -13,7 +13,7 @@ import json
 
 class AutoSync:
     """
-    مدير المزامنة التلقائية
+    ⚡ مدير المزامنة التلقائية - محسّن للسرعة
     - Pull: جلب البيانات من MongoDB إلى SQLite
     - Push: رفع البيانات من SQLite إلى MongoDB
     """
@@ -33,24 +33,28 @@ class AutoSync:
             'pushed': 0,
             'failed': 0
         }
+        self._batch_size = 50  # ⚡ حجم الدفعة للمزامنة
     
-    def start_auto_sync(self, delay_seconds: int = 2):
+    def start_auto_sync(self, delay_seconds: int = 3):
         """
-        بدء المزامنة التلقائية في الخلفية
+        ⚡ بدء المزامنة التلقائية في الخلفية (محسّن)
         
         Args:
             delay_seconds: التأخير قبل بدء المزامنة (بالثواني)
         """
         def sync_worker():
-            print(f"INFO: [AutoSync] انتظار {delay_seconds} ثانية قبل بدء المزامنة...")
             time.sleep(delay_seconds)
-            
-            print("INFO: [AutoSync] 🔄 بدء المزامنة التلقائية...")
+            print("INFO: [AutoSync] ⚡ بدء المزامنة السريعة...")
             self.perform_sync()
         
-        # تشغيل في thread منفصل
-        sync_thread = threading.Thread(target=sync_worker, daemon=True)
+        # تشغيل في thread منفصل بأولوية منخفضة
+        sync_thread = threading.Thread(
+            target=sync_worker, 
+            daemon=True, 
+            name="AutoSyncThread"
+        )
         sync_thread.start()
+        print(f"INFO: [AutoSync] ⚡ جدولة المزامنة (بعد {delay_seconds} ثانية)")
     
     def perform_sync(self):
         """تنفيذ المزامنة الكاملة (Pull ثم Push)"""
@@ -148,49 +152,56 @@ class AutoSync:
             self.repository.sqlite_conn.commit()
             print(f"  ✅ تم جلب {total_pulled} حساب")
             
-            # جلب العملاء
-            clients = list(self.repository.mongo_db.clients.find())
-            clients_pulled = 0
-            for client in clients:
-                try:
-                    c = dict(client)
-                    mongo_id = str(c.pop('_id'))
-                    
-                    # تحويل datetime
-                    for key in ['created_at', 'last_modified']:
-                        if key in c and hasattr(c[key], 'isoformat'):
-                            c[key] = c[key].isoformat()
-                    
-                    self.repository.sqlite_cursor.execute("""
-                        INSERT OR REPLACE INTO clients 
-                        (_mongo_id, name, company_name, email, phone, address, country,
-                         vat_number, status, client_type, work_field, logo_path,
-                         client_notes, created_at, last_modified, sync_status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
-                    """, (
-                        mongo_id,
-                        c.get('name'),
-                        c.get('company_name'),
-                        c.get('email'),
-                        c.get('phone'),
-                        c.get('address'),
-                        c.get('country'),
-                        c.get('vat_number'),
-                        c.get('status', 'نشط'),
-                        c.get('client_type'),
-                        c.get('work_field'),
-                        c.get('logo_path'),
-                        c.get('client_notes'),
-                        c.get('created_at'),
-                        c.get('last_modified'),
-                    ))
-                    clients_pulled += 1
-                except Exception as e:
-                    print(f"  ⚠️ فشل جلب عميل: {e}")
-            
-            self.repository.sqlite_conn.commit()
-            total_pulled += clients_pulled
-            print(f"  ✅ تم جلب {clients_pulled} عميل")
+            # جلب العملاء (مع إصلاح مشكلة cursor)
+            try:
+                clients_cursor = self.repository.mongo_db.clients.find()
+                clients = list(clients_cursor)
+                clients_cursor.close()  # إغلاق cursor لتجنب مشكلة recursive use
+                
+                clients_pulled = 0
+                for client in clients:
+                    try:
+                        c = dict(client)
+                        mongo_id = str(c.pop('_id'))
+                        
+                        # تحويل datetime
+                        for key in ['created_at', 'last_modified']:
+                            if key in c and hasattr(c[key], 'isoformat'):
+                                c[key] = c[key].isoformat()
+                        
+                        self.repository.sqlite_cursor.execute("""
+                            INSERT OR REPLACE INTO clients 
+                            (_mongo_id, name, company_name, email, phone, address, country,
+                             vat_number, status, client_type, work_field, logo_path,
+                             client_notes, created_at, last_modified, sync_status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
+                        """, (
+                            mongo_id,
+                            c.get('name'),
+                            c.get('company_name'),
+                            c.get('email'),
+                            c.get('phone'),
+                            c.get('address'),
+                            c.get('country'),
+                            c.get('vat_number'),
+                            c.get('status', 'نشط'),
+                            c.get('client_type'),
+                            c.get('work_field'),
+                            c.get('logo_path'),
+                            c.get('client_notes'),
+                            c.get('created_at'),
+                            c.get('last_modified'),
+                        ))
+                        clients_pulled += 1
+                    except Exception as e:
+                        print(f"  ⚠️ فشل جلب عميل: {e}")
+                
+                self.repository.sqlite_conn.commit()
+                total_pulled += clients_pulled
+                print(f"  ✅ تم جلب {clients_pulled} عميل")
+                
+            except Exception as e:
+                print(f"  ❌ فشل جلب العملاء: {e}")
             
             # جلب المشاريع
             projects = list(self.repository.mongo_db.projects.find())
@@ -279,6 +290,100 @@ class AutoSync:
             total_pulled += payments_pulled
             print(f"  ✅ تم جلب {payments_pulled} دفعة")
             
+            # جلب القيود المحاسبية (journal entries)
+            try:
+                journal_entries = list(self.repository.mongo_db.journal_entries.find())
+                entries_pulled = 0
+                for entry in journal_entries:
+                    try:
+                        e = dict(entry)
+                        mongo_id = str(e.pop('_id'))
+                        
+                        # تحويل datetime
+                        for key in ['created_at', 'last_modified', 'date']:
+                            if key in e and hasattr(e[key], 'isoformat'):
+                                e[key] = e[key].isoformat()
+                        
+                        # تحويل lines إلى JSON
+                        lines_json = json.dumps(e.get('lines', []))
+                        
+                        self.repository.sqlite_cursor.execute("""
+                            INSERT OR REPLACE INTO journal_entries 
+                            (_mongo_id, date, description, lines, related_document_id,
+                             created_at, last_modified, sync_status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'synced')
+                        """, (
+                            mongo_id,
+                            e.get('date'),
+                            e.get('description', ''),
+                            lines_json,
+                            e.get('related_document_id'),
+                            e.get('created_at'),
+                            e.get('last_modified'),
+                        ))
+                        entries_pulled += 1
+                    except Exception as ex:
+                        print(f"  ⚠️ فشل جلب قيد محاسبي: {ex}")
+                
+                self.repository.sqlite_conn.commit()
+                total_pulled += entries_pulled
+                print(f"  ✅ تم جلب {entries_pulled} قيد محاسبي")
+            except Exception as e:
+                print(f"  ❌ فشل جلب القيود المحاسبية: {e}")
+            
+            # جلب الفواتير
+            try:
+                invoices = list(self.repository.mongo_db.invoices.find())
+                invoices_pulled = 0
+                for inv in invoices:
+                    try:
+                        i = dict(inv)
+                        mongo_id = str(i.pop('_id'))
+                        
+                        # تحويل datetime
+                        for key in ['created_at', 'last_modified', 'issue_date', 'due_date']:
+                            if key in i and hasattr(i[key], 'isoformat'):
+                                i[key] = i[key].isoformat()
+                        
+                        # تحويل items إلى JSON
+                        items_json = json.dumps(i.get('items', []))
+                        
+                        self.repository.sqlite_cursor.execute("""
+                            INSERT OR REPLACE INTO invoices 
+                            (_mongo_id, invoice_number, client_id, project_id, issue_date, due_date,
+                             items, subtotal, discount_rate, discount_amount, tax_rate, tax_amount,
+                             total_amount, currency, status, notes, created_at, last_modified, sync_status)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced')
+                        """, (
+                            mongo_id,
+                            i.get('invoice_number'),
+                            i.get('client_id'),
+                            i.get('project_id'),
+                            i.get('issue_date'),
+                            i.get('due_date'),
+                            items_json,
+                            i.get('subtotal', 0.0),
+                            i.get('discount_rate', 0.0),
+                            i.get('discount_amount', 0.0),
+                            i.get('tax_rate', 0.0),
+                            i.get('tax_amount', 0.0),
+                            i.get('total_amount', 0.0),
+                            i.get('currency', 'EGP'),
+                            i.get('status', 'مسودة'),
+                            i.get('notes'),
+                            i.get('created_at'),
+                            i.get('last_modified'),
+                        ))
+                        invoices_pulled += 1
+                    except Exception as e:
+                        print(f"  ⚠️ فشل جلب فاتورة: {e}")
+                
+                self.repository.sqlite_conn.commit()
+                total_pulled += invoices_pulled
+                print(f"  ✅ تم جلب {invoices_pulled} فاتورة")
+            except Exception as e:
+                print(f"  ❌ فشل جلب الفواتير: {e}")
+            
         except Exception as e:
             print(f"ERROR: [AutoSync] فشل Pull: {e}")
         
@@ -313,7 +418,7 @@ class AutoSync:
                         if key in client_dict and isinstance(client_dict[key], str):
                             try:
                                 client_dict[key] = datetime.fromisoformat(client_dict[key])
-                            except:
+                            except (ValueError, TypeError, AttributeError):
                                 pass
                     
                     if mongo_id:

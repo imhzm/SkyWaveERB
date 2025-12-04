@@ -790,7 +790,7 @@ class SyncManager:
                         clean[field] = datetime.fromisoformat(
                             clean[field].replace('Z', '+00:00')
                         )
-                except:
+                except (ValueError, TypeError, AttributeError):
                     pass
         
         # تحويل JSON strings إلى objects
@@ -799,7 +799,7 @@ class SyncManager:
                 try:
                     if isinstance(clean[field], str):
                         clean[field] = json.loads(clean[field])
-                except:
+                except (json.JSONDecodeError, TypeError, ValueError):
                     pass
         
         return clean
