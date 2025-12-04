@@ -102,8 +102,8 @@ class AccountingManagerTab(QWidget):
         # تاب إدارة الحسابات (التاب الوحيد)
         self.setup_accounts_tab(main_layout)
         
-        # تحميل البيانات
-        self.load_accounts_data()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.load_accounts_data() - يتم استدعاؤها عند فتح التاب
         
         # ربط الإشارات للتحديث التلقائي
         app_signals.data_changed.connect(self.on_data_changed)
@@ -273,6 +273,11 @@ class AccountingManagerTab(QWidget):
         عن طريق جمع أرصدة الحسابات الفرعية بشكل تكراري
         """
         print("INFO: [AccManager] جاري تحميل شجرة الحسابات مع الأرصدة التراكمية...")
+        
+        # ⚡ منع التجميد - معالجة الأحداث
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
         try:
             # ✨ استخدام الدالة الجديدة للحصول على الأرصدة المحسوبة
             tree_map = self.accounting_service.get_hierarchy_with_balances()

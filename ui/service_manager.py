@@ -110,6 +110,8 @@ class ServiceManagerTab(QWidget):
         self.services_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )
+        self.services_table.verticalHeader().setDefaultSectionSize(45)  # ⚡ ارتفاع الصفوف
+        self.services_table.verticalHeader().setVisible(False)
         self.services_table.itemSelectionChanged.connect(self.on_service_selection_changed)
         
         # إضافة دبل كليك للتعديل
@@ -118,7 +120,8 @@ class ServiceManagerTab(QWidget):
         table_layout.addWidget(self.services_table)
         main_layout.addWidget(table_groupbox, 1)
 
-        self.load_services_data()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.load_services_data() - يتم استدعاؤها من MainWindow
         self.update_buttons_state(False)
 
     def update_buttons_state(self, has_selection: bool):
@@ -141,6 +144,11 @@ class ServiceManagerTab(QWidget):
         تحميل بيانات الخدمات من قاعدة البيانات وعرضها في الجدول
         """
         logger.info("[ServiceManager] جاري تحميل بيانات الخدمات")
+        
+        # ⚡ منع التجميد - معالجة الأحداث
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
         try:
             if self.show_archived_checkbox.isChecked():
                 self.services_list = self.service_service.get_archived_services()

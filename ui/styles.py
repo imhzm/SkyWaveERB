@@ -210,9 +210,11 @@ TABLE_STYLE_DARK = f"""
         border: none;
         gridline-color: {COLORS['border']};
         selection-background-color: {COLORS['primary']};
+        font-size: 14px;
     }}
     QTableWidget::item {{
-        padding: 8px;
+        padding: 12px 8px;
+        min-height: 40px;
         border-bottom: 1px solid {COLORS['border']};
         border: none;
         text-align: center;
@@ -237,11 +239,12 @@ TABLE_STYLE_DARK = f"""
     QHeaderView::section {{
         background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {COLORS['header_bg']}, stop:1 #3b82f6);
         color: white;
-        padding: 10px;
+        padding: 14px 10px;
         border: none;
         font-weight: bold;
-        font-size: 13px;
+        font-size: 14px;
         text-align: center;
+        min-height: 25px;
     }}
 """
 
@@ -253,9 +256,11 @@ TREE_STYLE_DARK = f"""
         color: {COLORS['text_primary']};
         border: none;
         selection-background-color: {COLORS['primary']};
+        font-size: 14px;
     }}
     QTreeView::item {{
-        padding: 6px;
+        padding: 10px 6px;
+        min-height: 35px;
         border-bottom: 1px solid {COLORS['border']};
         text-align: center;
     }}
@@ -269,11 +274,12 @@ TREE_STYLE_DARK = f"""
     QHeaderView::section {{
         background-color: {COLORS['header_bg']};
         color: white;
-        padding: 10px;
+        padding: 14px 10px;
         border: none;
         font-weight: bold;
-        font-size: 13px;
+        font-size: 14px;
         text-align: center;
+        min-height: 25px;
     }}
 """
 

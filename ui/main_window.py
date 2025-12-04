@@ -372,9 +372,11 @@ class MainWindow(QMainWindow):
             elif tab_name == "📊 المحاسبة":
                 if hasattr(self, 'accounting_tab'):
                     self.accounting_tab.project_service = self.project_service
+                    QTimer.singleShot(50, self.accounting_tab.load_accounts_data)
             elif tab_name == "🔧 الإعدادات":
                 if hasattr(self, 'settings_tab'):
                     QTimer.singleShot(50, self.settings_tab.load_settings_data)
+                    QTimer.singleShot(100, self.settings_tab.load_users)
                     
             print(f"INFO: [MainWindow] تم تحميل بيانات التاب: {tab_name}")
             

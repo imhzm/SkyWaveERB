@@ -78,8 +78,8 @@ class DashboardTab(QWidget):
         main_layout.addLayout(grid_layout)
         main_layout.addStretch()
         
-        # تحميل البيانات تلقائياً عند فتح التاب
-        self.refresh_data()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.refresh_data() - تم نقله لـ QTimer.singleShot في MainWindow
 
     def create_kpi_card(self, title: str, value: str, color: str) -> QFrame:
         """ (جديدة) دالة لإنشاء "كارت" عرض الأرقام """
@@ -117,6 +117,11 @@ class DashboardTab(QWidget):
         (جديدة) تجلب الأرقام من الـ Service وتحدّث الكروت
         """
         print("INFO: [Dashboard] جاري تحديث أرقام الداشبورد...")
+        
+        # ⚡ منع التجميد - معالجة الأحداث
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
         try:
             kpis = self.accounting_service.get_dashboard_kpis()
 

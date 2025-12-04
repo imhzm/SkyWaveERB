@@ -39,7 +39,8 @@ class ExpenseManagerTab(QWidget):
         self.expenses_list: List[schemas.Expense] = []
 
         self.setup_ui()
-        self.load_expenses_data()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.load_expenses_data() - يتم استدعاؤها من MainWindow
 
     def setup_ui(self):
         """إعداد الواجهة"""
@@ -94,6 +95,8 @@ class ExpenseManagerTab(QWidget):
         self.expenses_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.expenses_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.expenses_table.setAlternatingRowColors(True)
+        self.expenses_table.verticalHeader().setDefaultSectionSize(45)  # ⚡ ارتفاع الصفوف
+        self.expenses_table.verticalHeader().setVisible(False)
         self.expenses_table.itemDoubleClicked.connect(self.open_edit_dialog)
         from ui.styles import TABLE_STYLE_DARK
         self.expenses_table.setStyleSheet(TABLE_STYLE_DARK)
@@ -108,6 +111,11 @@ class ExpenseManagerTab(QWidget):
     def load_expenses_data(self):
         """تحميل المصروفات"""
         print("INFO: [ExpenseManager] جاري تحميل المصروفات...")
+        
+        # ⚡ منع التجميد - معالجة الأحداث
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
         try:
             self.expenses_list = self.expense_service.get_all_expenses()
             self.expenses_table.setRowCount(0)

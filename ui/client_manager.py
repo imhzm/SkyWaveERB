@@ -102,7 +102,8 @@ class ClientManagerTab(QWidget):
         self.clients_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.clients_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.clients_table.setAlternatingRowColors(True)
-        self.clients_table.verticalHeader().setDefaultSectionSize(60)
+        self.clients_table.verticalHeader().setDefaultSectionSize(45)  # ⚡ ارتفاع الصفوف
+        self.clients_table.verticalHeader().setVisible(False)
         self.clients_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.clients_table.setColumnWidth(0, 70)
         self.clients_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -122,7 +123,8 @@ class ClientManagerTab(QWidget):
         table_layout.addWidget(self.clients_table)
         main_layout.addWidget(table_groupbox, 1)
 
-        self.load_clients_data()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.load_clients_data() - يتم استدعاؤها من MainWindow
         self.update_buttons_state(False)
     
     def export_clients(self):
@@ -251,6 +253,11 @@ class ClientManagerTab(QWidget):
     def load_clients_data(self):
         """⚡ تحميل بيانات العملاء بشكل محسّن للسرعة"""
         print("INFO: [ClientManager] جاري تحميل بيانات العملاء...")
+        
+        # ⚡ منع التجميد - معالجة الأحداث
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
         try:
             if self.show_archived_checkbox.isChecked():
                 self.clients_list = self.client_service.get_archived_clients()

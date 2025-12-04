@@ -296,7 +296,7 @@ class ProjectService:
     
     # --- دوال الربحية (معدلة عشان تستخدم الداتا الصح) ---
     def get_project_profitability(self, project_name: str) -> dict:
-        """⚡ حساب ربحية المشروع (محسّن للسرعة)"""
+        """⚡ حساب ربحية المشروع (يدعم Online و Offline)"""
         try:
             project = self.repo.get_project_by_number(project_name)
             if not project:
@@ -309,30 +309,54 @@ class ProjectService:
                 }
 
             total_revenue = project.total_amount
+            total_expenses = 0
+            total_paid = 0
 
-            # ⚡ استعلام SQL مباشر للمصروفات (أسرع)
-            try:
-                self.repo.sqlite_cursor.execute(
-                    "SELECT SUM(amount) FROM expenses WHERE project_id = ?",
-                    (project_name,)
-                )
-                result = self.repo.sqlite_cursor.fetchone()
-                total_expenses = result[0] if result and result[0] else 0
-            except (sqlite3.Error, AttributeError) as e:
-                print(f"WARNING: [ProjectService] فشل جلب المصروفات: {e}")
-                total_expenses = 0
+            # ⚡ جلب البيانات من MongoDB أولاً (إذا متصل)
+            if self.repo.online and self.repo.mongo_db is not None:
+                try:
+                    # جلب المصروفات من MongoDB
+                    expenses = list(self.repo.mongo_db.expenses.find(
+                        {"project_id": project_name},
+                        {"amount": 1}
+                    ))
+                    total_expenses = sum([e.get("amount", 0) for e in expenses])
+                    print(f"INFO: [Repo] جلب مصروفات مشروع: {project_name}")
+                    
+                    # جلب الدفعات من MongoDB
+                    payments = list(self.repo.mongo_db.payments.find(
+                        {"project_id": project_name},
+                        {"amount": 1}
+                    ))
+                    total_paid = sum([p.get("amount", 0) for p in payments])
+                    
+                except Exception as e:
+                    print(f"WARNING: [ProjectService] فشل جلب البيانات من MongoDB: {e}")
+                    # fallback to SQLite
+                    total_expenses = 0
+                    total_paid = 0
+            
+            # ⚡ Fallback إلى SQLite إذا لم نحصل على بيانات
+            if total_expenses == 0 and total_paid == 0:
+                try:
+                    self.repo.sqlite_cursor.execute(
+                        "SELECT SUM(amount) FROM expenses WHERE project_id = ?",
+                        (project_name,)
+                    )
+                    result = self.repo.sqlite_cursor.fetchone()
+                    total_expenses = result[0] if result and result[0] else 0
+                except Exception:
+                    pass
 
-            # ⚡ استعلام SQL مباشر للدفعات (أسرع)
-            try:
-                self.repo.sqlite_cursor.execute(
-                    "SELECT SUM(amount) FROM payments WHERE project_id = ?",
-                    (project_name,)
-                )
-                result = self.repo.sqlite_cursor.fetchone()
-                total_paid = result[0] if result and result[0] else 0
-            except (sqlite3.Error, AttributeError) as e:
-                print(f"WARNING: [ProjectService] فشل جلب الدفعات: {e}")
-                total_paid = 0
+                try:
+                    self.repo.sqlite_cursor.execute(
+                        "SELECT SUM(amount) FROM payments WHERE project_id = ?",
+                        (project_name,)
+                    )
+                    result = self.repo.sqlite_cursor.fetchone()
+                    total_paid = result[0] if result and result[0] else 0
+                except Exception:
+                    pass
 
             net_profit = total_revenue - total_expenses
             balance_due = max(0, total_revenue - total_paid)

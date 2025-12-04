@@ -1085,6 +1085,8 @@ class ProjectManagerTab(QWidget):
         self.projects_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.projects_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.projects_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.projects_table.verticalHeader().setDefaultSectionSize(45)  # ⚡ ارتفاع الصفوف
+        self.projects_table.verticalHeader().setVisible(False)
         self.projects_table.itemSelectionChanged.connect(self.on_project_selection_changed)
         
 
@@ -1126,7 +1128,8 @@ class ProjectManagerTab(QWidget):
 
         main_layout.addWidget(self.preview_groupbox, 1)
 
-        self.load_projects_data()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.load_projects_data() - يتم استدعاؤها من MainWindow
         self.on_project_selection_changed()
 
     def create_kpi_card(self, title: str, value: str, color: str) -> QFrame:
@@ -1290,6 +1293,11 @@ class ProjectManagerTab(QWidget):
 
     def load_projects_data(self):
         print("INFO: [ProjectManager] جاري تحميل بيانات المشاريع...")
+        
+        # ⚡ منع التجميد - معالجة الأحداث
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
         try:
             # ⚡ تعطيل الترتيب مؤقتاً أثناء التحميل (للسرعة)
             self.projects_table.setSortingEnabled(False)

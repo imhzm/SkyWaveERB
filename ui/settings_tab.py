@@ -87,8 +87,9 @@ class SettingsTab(QWidget):
         from ui.styles import apply_arrows_to_all_widgets
         apply_arrows_to_all_widgets(self)
 
-        self.load_settings_data()
-        self.load_users()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.load_settings_data() - يتم استدعاؤها من MainWindow
+        # self.load_users() - يتم استدعاؤها من MainWindow
 
     def setup_company_tab(self):
         """إعداد تاب بيانات الشركة"""

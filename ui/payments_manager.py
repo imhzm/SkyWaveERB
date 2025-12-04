@@ -242,7 +242,8 @@ class PaymentsManagerTab(QWidget):
 
         self.setup_ui()
         self.apply_permissions()
-        self.load_payments_data()
+        # ⚡ تحميل البيانات بعد ظهور النافذة (لتجنب التجميد)
+        # self.load_payments_data() - يتم استدعاؤها من MainWindow
 
     def setup_ui(self):
         """إعداد الواجهة"""
@@ -292,6 +293,8 @@ class PaymentsManagerTab(QWidget):
         self.payments_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.payments_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.payments_table.setAlternatingRowColors(True)
+        self.payments_table.verticalHeader().setDefaultSectionSize(45)  # ⚡ ارتفاع الصفوف
+        self.payments_table.verticalHeader().setVisible(False)
         
         # ربط الدبل كليك
         self.payments_table.itemDoubleClicked.connect(self.open_edit_dialog)
@@ -308,6 +311,11 @@ class PaymentsManagerTab(QWidget):
     def load_payments_data(self):
         """تحميل جميع الدفعات"""
         print("INFO: [PaymentsManager] جاري تحميل الدفعات...")
+        
+        # ⚡ منع التجميد - معالجة الأحداث
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+        
         try:
             # تحميل الدفعات
             self.payments_list = self.accounting_service.repo.get_all_payments()
