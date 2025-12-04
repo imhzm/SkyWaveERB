@@ -4,11 +4,19 @@ from core.repository import Repository
 from core.event_bus import EventBus
 from core import schemas
 from core.signals import app_signals
-from datetime import datetime, timedelta  # (جديد)
+from datetime import datetime, timedelta
 from typing import List, Optional, Dict
+import time
+import sqlite3
 
-# (جديد: هنحتاج قسم المحاسبة عشان نجيب حسابات البنك)
 from services.accounting_service import AccountingService
+
+# ⚡ استيراد محسّن السرعة
+try:
+    from core.speed_optimizer import LRUCache, cached
+    CACHE_ENABLED = True
+except ImportError:
+    CACHE_ENABLED = False
 
 # خدمة طباعة المشاريع
 try:
@@ -21,15 +29,20 @@ except ImportError:
 
 class ProjectService:
     """
-    (معدل) قسم المشاريع (أصبح العقل المالي الوحيد).
+    ⚡ قسم المشاريع - محسّن للسرعة القصوى
     """
 
     def __init__(self, repository: Repository, event_bus: EventBus,
-                 accounting_service: AccountingService, settings_service=None):  # (معدل)
+                 accounting_service: AccountingService, settings_service=None):
         self.repo = repository
         self.bus = event_bus
-        self.accounting_service = accounting_service  # (جديد)
+        self.accounting_service = accounting_service
         self.settings_service = settings_service
+        
+        # ⚡ Cache للمشاريع
+        self._cache_time = 0
+        self._cached_projects = None
+        self._cache_ttl = 30  # 30 ثانية
 
         # خدمة الطباعة
         if PRINTING_AVAILABLE:
@@ -37,19 +50,33 @@ class ProjectService:
         else:
             self.printing_service = None
 
-        # (جديد) هنشترك في حدث تحويل عرض السعر هنا
         self.bus.subscribe('CONVERT_TO_INVOICE', self.handle_convert_to_project)
-
-        print("INFO: قسم المشاريع (ProjectService) جاهز.")
+        print("INFO: ⚡ قسم المشاريع (ProjectService) جاهز")
 
     def get_all_projects(self) -> List[schemas.Project]:
-        """ ⚡ جلب كل المشاريع (محسّن للسرعة) """
+        """⚡ جلب كل المشاريع (مع cache للسرعة)"""
         try:
-            # ⚡ استخدام SQLite مباشرة بدون MongoDB
-            return self.repo.get_all_projects(exclude_status=schemas.ProjectStatus.ARCHIVED)
+            # ⚡ استخدام الـ cache
+            now = time.time()
+            if self._cached_projects and (now - self._cache_time) < self._cache_ttl:
+                return self._cached_projects
+            
+            # جلب من قاعدة البيانات
+            projects = self.repo.get_all_projects(exclude_status=schemas.ProjectStatus.ARCHIVED)
+            
+            # تحديث الـ cache
+            self._cached_projects = projects
+            self._cache_time = now
+            
+            return projects
         except Exception as e:
             print(f"ERROR: [ProjectService] فشل جلب المشاريع: {e}")
             return []
+    
+    def invalidate_cache(self):
+        """⚡ إبطال الـ cache"""
+        self._cached_projects = None
+        self._cache_time = 0
 
     def get_archived_projects(self) -> List[schemas.Project]:
         """ جلب كل المشاريع المؤرشفة """
@@ -61,11 +88,11 @@ class ProjectService:
 
     def create_project(self, project_data: dict, payment_data: dict) -> schemas.Project:
         """
-        (معدلة) إنشاء مشروع جديد (مع الدفعة المقدمة)
+        ⚡ إنشاء مشروع جديد (مع إبطال الـ cache)
         """
-        print(f"INFO: [ProjectService] استلام طلب إنشاء مشروع: {project_data.get('name')}")
+        print(f"INFO: [ProjectService] ⚡ إنشاء مشروع: {project_data.get('name')}")
         try:
-            # --- 1. حساب الإجماليات (زي ما هي) ---
+            # --- 1. حساب الإجماليات (مع خصم البند) ---
             items_list = project_data.get("items", [])
             subtotal = 0
             processed_items = []
@@ -74,7 +101,14 @@ class ProjectService:
                     item_obj = schemas.ProjectItem(**item)
                 else:
                     item_obj = item
-                item_obj.total = item_obj.quantity * item_obj.unit_price
+                
+                # حساب إجمالي البند مع الخصم
+                item_subtotal = item_obj.quantity * item_obj.unit_price
+                item_discount_rate = getattr(item_obj, 'discount_rate', 0.0)
+                item_discount = item_subtotal * (item_discount_rate / 100)
+                item_obj.discount_amount = item_discount
+                item_obj.total = item_subtotal - item_discount
+                
                 subtotal += item_obj.total
                 processed_items.append(item_obj)
 
@@ -117,10 +151,11 @@ class ProjectService:
                     account_id=payment_data["account_id"]
                 )
 
-            # إرسال إشارة التحديث العامة
+            # ⚡ إبطال الـ cache وإرسال إشارة التحديث
+            self.invalidate_cache()
             app_signals.emit_data_changed('projects')
             
-            print(f"SUCCESS: [ProjectService] تم إنشاء المشروع {created_project.name} بالكامل.")
+            print(f"SUCCESS: [ProjectService] ✅ تم إنشاء المشروع {created_project.name}")
             return created_project
 
         except Exception as e:
@@ -128,9 +163,10 @@ class ProjectService:
             raise
 
     def update_project(self, project_name: str, new_data_dict: dict) -> Optional[schemas.Project]:
-        print(f"INFO: [ProjectService] استلام طلب تعديل مشروع: {project_name}")
+        """⚡ تعديل مشروع (مع إبطال الـ cache)"""
+        print(f"INFO: [ProjectService] ⚡ تعديل مشروع: {project_name}")
         try:
-            # (نفس لوجيك الحسابات)
+            # (نفس لوجيك الحسابات - مع خصم البند)
             items_list = new_data_dict.get("items", [])
             subtotal = 0
             processed_items = []
@@ -139,7 +175,14 @@ class ProjectService:
                     item_obj = schemas.ProjectItem(**item)
                 else:
                     item_obj = item
-                item_obj.total = item_obj.quantity * item_obj.unit_price
+                
+                # حساب إجمالي البند مع الخصم
+                item_subtotal = item_obj.quantity * item_obj.unit_price
+                item_discount_rate = getattr(item_obj, 'discount_rate', 0.0)
+                item_discount = item_subtotal * (item_discount_rate / 100)
+                item_obj.discount_amount = item_discount
+                item_obj.total = item_subtotal - item_discount
+                
                 subtotal += item_obj.total
                 processed_items.append(item_obj)
 
@@ -165,10 +208,11 @@ class ProjectService:
 
             saved_project = self.repo.update_project(project_name, updated_project_schema)
 
-            # (الأهم) إبلاغ الروبوت المحاسبي بالتعديل
+            # ⚡ إبطال الـ cache وإبلاغ الروبوت المحاسبي
+            self.invalidate_cache()
             self.bus.publish('PROJECT_EDITED', {"project": saved_project})
 
-            print(f"SUCCESS: [ProjectService] تم تعديل المشروع {project_name}.")
+            print(f"SUCCESS: [ProjectService] ✅ تم تعديل المشروع {project_name}")
             return saved_project
         except Exception as e:
             print(f"ERROR: [ProjectService] فشل تعديل المشروع: {e}")
@@ -274,7 +318,8 @@ class ProjectService:
                 )
                 result = self.repo.sqlite_cursor.fetchone()
                 total_expenses = result[0] if result and result[0] else 0
-            except:
+            except (sqlite3.Error, AttributeError) as e:
+                print(f"WARNING: [ProjectService] فشل جلب المصروفات: {e}")
                 total_expenses = 0
 
             # ⚡ استعلام SQL مباشر للدفعات (أسرع)
@@ -285,7 +330,8 @@ class ProjectService:
                 )
                 result = self.repo.sqlite_cursor.fetchone()
                 total_paid = result[0] if result and result[0] else 0
-            except:
+            except (sqlite3.Error, AttributeError) as e:
+                print(f"WARNING: [ProjectService] فشل جلب الدفعات: {e}")
                 total_paid = 0
 
             net_profit = total_revenue - total_expenses
@@ -415,6 +461,6 @@ class ProjectService:
                 else:
                     timestamp = datetime.now().strftime("%m%d")
                     return f"SW-{timestamp}"
-            except:
+            except (AttributeError, ValueError, TypeError):
                 timestamp = datetime.now().strftime("%m%d")
                 return f"SW-{timestamp}"

@@ -636,6 +636,3 @@ class NotificationService:
         
         except Exception as e:
             logger.error(f"فشل فحص مواعيد استحقاق المشاريع: {e}")
-
-
-print("services/notification_service.py تم إنشاؤه بنجاح.")

@@ -109,7 +109,7 @@ class InvoicePrintingService:
             if key in invoice_data:
                 try:
                     invoice_data[key] = float(invoice_data[key]) if invoice_data[key] else 0.0
-                except:
+                except (ValueError, TypeError, AttributeError):
                     invoice_data[key] = 0.0
         
         # تصحيح الدفعات
@@ -129,7 +129,7 @@ class InvoicePrintingService:
                     if 'amount' in payment:
                         try:
                             payment['amount'] = float(payment['amount'])
-                        except:
+                        except (ValueError, TypeError, AttributeError):
                             payment['amount'] = 0.0
                     
                     # تصحيح اسم الحساب
@@ -150,7 +150,7 @@ class InvoicePrintingService:
                         if key in item:
                             try:
                                 item[key] = float(item[key]) if item[key] else 0.0
-                            except:
+                            except (ValueError, TypeError, AttributeError):
                                 item[key] = 0.0
         
         return invoice_data
@@ -246,20 +246,26 @@ class InvoicePrintingService:
                     # إذا مفيش account_name، نجيبه من account_id
                     if 'account_name' not in payment or not payment['account_name']:
                         account_id = payment.get('account_id', '')
-                        if account_id and self.settings_service:
+                        if account_id:
                             try:
                                 # محاولة جلب اسم الحساب من الريبوزيتوري
                                 from core.repository import Repository
                                 repo = Repository()
-                                account = repo.get_account_by_id(account_id)
+                                # محاولة جلب الحساب بالكود أولاً
+                                account = repo.get_account_by_code(account_id)
                                 if account:
                                     payment['account_name'] = account.name
                                 else:
-                                    payment['account_name'] = account_id
-                            except:
+                                    # محاولة جلب الحساب بالـ ID
+                                    account = repo.get_account_by_id(account_id)
+                                    if account:
+                                        payment['account_name'] = account.name
+                                    else:
+                                        payment['account_name'] = account_id
+                            except (AttributeError, KeyError, TypeError):
                                 payment['account_name'] = account_id
                         else:
-                            payment['account_name'] = account_id if account_id else 'غير محدد'
+                            payment['account_name'] = 'غير محدد'
         
         return context
     
@@ -272,7 +278,7 @@ class InvoicePrintingService:
             filename: اسم الملف (بدون امتداد)
         
         Returns:
-            مسار ملف PDF أو HTML إذا نجح، None إذا فشل
+            مسار ملف PDF إذا نجح، None إذا فشل
         """
         pdf_path = str(self.exports_dir / f"{filename}.pdf")
         
@@ -290,23 +296,113 @@ class InvoicePrintingService:
             return pdf_path
             
         except ImportError:
-            print(f"WARNING: [InvoicePrintingService] WeasyPrint غير متوفر، جاري المحاولة بطريقة بديلة...")
+            print(f"WARNING: [InvoicePrintingService] WeasyPrint غير متوفر، جاري استخدام PyQt6...")
         except Exception as e:
             print(f"WARNING: [InvoicePrintingService] فشل WeasyPrint: {e}")
         
-        # محاولة 2: حفظ HTML مباشرة (أسرع بكتير)
+        # محاولة 2: استخدام PyQt6 لتحويل HTML إلى PDF
+        try:
+            print(f"INFO: [InvoicePrintingService] استخدام PyQt6 لتوليد PDF...")
+            return self._generate_pdf_with_qt(html_content, pdf_path)
+        except Exception as e:
+            print(f"WARNING: [InvoicePrintingService] فشل PyQt6: {e}")
+        
+        # محاولة 3: حفظ HTML كـ fallback أخير
         html_path = str(self.exports_dir / f"{filename}.html")
         try:
-            print(f"INFO: [InvoicePrintingService] حفظ HTML للطباعة السريعة...")
+            print(f"INFO: [InvoicePrintingService] حفظ HTML كـ fallback...")
             with open(html_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
-            print(f"✅ [InvoicePrintingService] تم حفظ HTML: {html_path}")
+            print(f"⚠️ [InvoicePrintingService] تم حفظ HTML: {html_path}")
             print(f"💡 افتح الملف في المتصفح واطبع (Ctrl+P) للحصول على PDF")
             return html_path
             
         except Exception as e:
             print(f"ERROR: [InvoicePrintingService] فشل حفظ HTML: {e}")
+            return None
+    
+    def _generate_pdf_with_qt(self, html_content: str, pdf_path: str) -> Optional[str]:
+        """
+        توليد PDF باستخدام PyQt6
+        
+        Args:
+            html_content: محتوى HTML
+            pdf_path: مسار ملف PDF المطلوب
+        
+        Returns:
+            مسار ملف PDF إذا نجح، None إذا فشل
+        """
+        try:
+            from PyQt6.QtWidgets import QApplication
+            from PyQt6.QtGui import QPageLayout, QPageSize
+            from PyQt6.QtCore import QMarginsF, QUrl, QEventLoop, QTimer
+            from PyQt6.QtWebEngineWidgets import QWebEngineView
+            from PyQt6.QtPrintSupport import QPrinter
+            
+            # التأكد من وجود QApplication
+            app = QApplication.instance()
+            if not app:
+                app = QApplication([])
+            
+            # إنشاء WebView لعرض HTML
+            web_view = QWebEngineView()
+            
+            # إعداد الطابعة للـ PDF
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+            printer.setOutputFileName(pdf_path)
+            
+            # إعداد حجم الصفحة A4
+            page_layout = QPageLayout(
+                QPageSize(QPageSize.PageSizeId.A4),
+                QPageLayout.Orientation.Portrait,
+                QMarginsF(0, 0, 0, 0)
+            )
+            printer.setPageLayout(page_layout)
+            
+            # متغير لتتبع اكتمال الطباعة
+            pdf_generated = [False]
+            
+            def on_pdf_done(success):
+                pdf_generated[0] = success
+                if success:
+                    print(f"✅ [InvoicePrintingService] تم إنشاء PDF باستخدام PyQt6")
+                else:
+                    print(f"ERROR: [InvoicePrintingService] فشل إنشاء PDF")
+            
+            def on_load_finished(ok):
+                if ok:
+                    # طباعة إلى PDF بعد تحميل الصفحة
+                    web_view.page().printToPdf(pdf_path)
+                    pdf_generated[0] = True
+                else:
+                    print(f"ERROR: [InvoicePrintingService] فشل تحميل HTML")
+            
+            # ربط الإشارة
+            web_view.loadFinished.connect(on_load_finished)
+            
+            # تحميل HTML
+            web_view.setHtml(html_content, QUrl.fromLocalFile(str(self.templates_dir) + "/"))
+            
+            # انتظار اكتمال التحميل والطباعة
+            loop = QEventLoop()
+            QTimer.singleShot(3000, loop.quit)  # انتظار 3 ثواني كحد أقصى
+            loop.exec()
+            
+            # التحقق من إنشاء الملف
+            if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0:
+                return pdf_path
+            
+            return None
+            
+        except ImportError as e:
+            print(f"WARNING: [InvoicePrintingService] PyQt6 WebEngine غير متوفر: {e}")
+            return None
+        except Exception as e:
+            print(f"ERROR: [InvoicePrintingService] خطأ في PyQt6: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def _open_file(self, file_path: str) -> bool:

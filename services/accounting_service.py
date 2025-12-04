@@ -4,8 +4,12 @@ from core.repository import Repository
 from core.event_bus import EventBus
 from core import schemas
 from core.signals import app_signals
+from core.logger import get_logger
 from datetime import datetime
 from typing import List, Dict, Optional
+
+logger = get_logger(__name__)
+
 
 class AccountingService:
     """
@@ -22,14 +26,21 @@ class AccountingService:
     CASH_ACCOUNT_CODE = "1101"  # حساب الخزنة الرئيسية (مدين عند التحصيل)
 
     def __init__(self, repository: Repository, event_bus: EventBus):
+        """
+        تهيئة الروبوت المحاسبي
+        
+        Args:
+            repository: مخزن البيانات الرئيسي
+            event_bus: نظام الأحداث للتواصل بين الخدمات
+        """
         self.repo = repository
         self.bus = event_bus
-        print("INFO: الروبوت المحاسبي (AccountingService) جاهز.")
+        logger.info("الروبوت المحاسبي (AccountingService) جاهز")
         
         # أهم خطوة: الروبوت بيشترك في الأحداث أول ما يشتغل
         self._subscribe_to_events()
 
-    def _subscribe_to_events(self):
+    def _subscribe_to_events(self) -> None:
         """
         دالة داخلية للاشتراك في كل الأحداث المالية.
         """
@@ -38,22 +49,27 @@ class AccountingService:
         self.bus.subscribe('PAYMENT_RECEIVED', self.handle_new_payment)
         self.bus.subscribe('INVOICE_VOIDED', self.handle_voided_invoice)
         self.bus.subscribe('INVOICE_EDITED', self.handle_edited_invoice)
-        print("INFO: [AccountingService] تم الاشتراك في 'INVOICE_CREATED', 'EXPENSE_CREATED', 'PAYMENT_RECEIVED', 'INVOICE_VOIDED', 'INVOICE_EDITED'.")
+        logger.info("[AccountingService] تم الاشتراك في الأحداث المالية: INVOICE_CREATED, EXPENSE_CREATED, PAYMENT_RECEIVED, INVOICE_VOIDED, INVOICE_EDITED")
 
     def get_all_journal_entries(self) -> List[schemas.JournalEntry]:
-        """جلب كل قيود اليومية"""
+        """
+        جلب كل قيود اليومية
+        
+        Returns:
+            قائمة بجميع قيود اليومية
+        """
         try:
             return self.repo.get_all_journal_entries()
         except Exception as e:
-            print(f"ERROR: [AccountingService] فشل جلب قيود اليومية: {e}")
+            logger.error(f"[AccountingService] فشل جلب قيود اليومية: {e}", exc_info=True)
             return []
 
     def get_hierarchy_with_balances(self) -> Dict[str, dict]:
         """
         جلب شجرة الحسابات مع حساب الأرصدة التراكمية للمجموعات
         
-        هذه الدالة تحسب أرصدة الحسابات الأب (المجموعات) عن طريق
-        جمع أرصدة الحسابات الفرعية بشكل تكراري (Recursive Roll-up)
+        هذه الدالة تحسب أرصدة الحسابات من القيود المحاسبية (الطريقة الصحيحة)
+        ثم تجمع أرصدة الحسابات الفرعية للمجموعات بشكل تكراري
         
         Returns:
             Dict[code, {obj: Account, total: float, children: []}]
@@ -67,7 +83,22 @@ class AccountingService:
                 print("WARNING: [AccountingService] لا توجد حسابات")
                 return {}
             
-            # 1. إنشاء قاموس للوصول السريع O(1)
+            # 1. حساب الأرصدة من القيود المحاسبية
+            account_movements = {}  # {code: {'debit': 0, 'credit': 0}}
+            
+            try:
+                journal_entries = self.repo.get_all_journal_entries()
+                for entry in journal_entries:
+                    for line in entry.lines:
+                        code = line.account_code
+                        if code not in account_movements:
+                            account_movements[code] = {'debit': 0.0, 'credit': 0.0}
+                        account_movements[code]['debit'] += line.debit or 0.0
+                        account_movements[code]['credit'] += line.credit or 0.0
+            except Exception as e:
+                print(f"WARNING: [AccountingService] فشل جلب القيود: {e}")
+            
+            # 2. إنشاء قاموس للوصول السريع O(1)
             tree_map: Dict[str, dict] = {}
             for acc in accounts:
                 if acc.code:
@@ -78,7 +109,7 @@ class AccountingService:
                         'is_group': getattr(acc, 'is_group', False)
                     }
             
-            # 2. بناء هيكل الشجرة وتعيين الأرصدة للحسابات الفرعية
+            # 3. بناء هيكل الشجرة وحساب الأرصدة من القيود
             roots = []
             for acc in accounts:
                 if not acc.code:
@@ -86,38 +117,56 @@ class AccountingService:
                     
                 node = tree_map[acc.code]
                 
-                # تحديد ما إذا كان الحساب مجموعة أم حساب معاملات
-                is_group = getattr(acc, 'is_group', False)
+                # حساب الرصيد من القيود المحاسبية
+                movements = account_movements.get(acc.code, {'debit': 0.0, 'credit': 0.0})
+                debit_total = movements['debit']
+                credit_total = movements['credit']
                 
-                # إذا لم يكن مجموعة، استخدم رصيده الفعلي من قاعدة البيانات
-                if not is_group:
-                    node['total'] = acc.balance or 0.0
+                # حساب الرصيد حسب نوع الحساب
+                acc_type = acc.type.value if acc.type else 'ASSET'
+                if acc_type in ['ASSET', 'CASH', 'EXPENSE', 'أصول', 'أصول نقدية', 'مصروفات']:
+                    # الأصول والمصروفات: المدين يزيد، الدائن ينقص
+                    node['total'] = debit_total - credit_total
+                else:
+                    # الخصوم والإيرادات وحقوق الملكية: الدائن يزيد، المدين ينقص
+                    node['total'] = credit_total - debit_total
                 
-                # ربط الحساب بالأب
-                parent_code = acc.parent_code
-                if parent_code and parent_code in tree_map:
-                    tree_map[parent_code]['children'].append(node)
+                # ربط الحساب بالأب (استخدام parent_id أو parent_code)
+                parent_code = getattr(acc, 'parent_id', None) or getattr(acc, 'parent_code', None)
+                if parent_code and str(parent_code) in tree_map:
+                    tree_map[str(parent_code)]['children'].append(node)
                 else:
                     # حساب جذر (بدون أب)
                     roots.append(node)
             
-            # 3. دالة الحساب التكراري (المحرك الأساسي)
-            def calculate_node_total(node: dict) -> float:
+            # 4. حساب الأرصدة التراكمية للمجموعات (من الأسفل للأعلى)
+            def calculate_total(node: dict) -> float:
                 """حساب إجمالي العقدة بشكل تكراري"""
                 if not node['children']:
-                    # عقدة ورقية - إرجاع رصيدها الخاص
+                    # حساب فرعي (ورقة) - إرجاع رصيده المحسوب من القيود
                     return node['total']
                 
-                # جمع أرصدة جميع الأبناء بشكل تكراري
-                child_sum = sum(calculate_node_total(child) for child in node['children'])
-                
-                # تحديث إجمالي الأب
-                node['total'] = child_sum
-                return node['total']
+                # مجموعة - جمع أرصدة الأبناء + الرصيد المباشر
+                children_total = sum(calculate_total(child) for child in node['children'])
+                direct_balance = node['total']  # الرصيد المباشر للمجموعة
+                total_balance = direct_balance + children_total
+                node['total'] = total_balance
+                return total_balance
             
-            # 4. تشغيل الحساب لجميع الجذور
-            for root in roots:
-                calculate_node_total(root)
+            # تشغيل الحساب لكل العقد التي لها أطفال
+            # نبدأ من الأوراق ونطلع للجذور
+            def process_all_nodes():
+                changed = True
+                while changed:
+                    changed = False
+                    for code, node in tree_map.items():
+                        if node['children']:
+                            old_total = node['total']
+                            calculate_total(node)
+                            if abs(old_total - node['total']) > 0.01:
+                                changed = True
+            
+            process_all_nodes()
             
             # طباعة ملخص للتأكد
             print(f"INFO: [AccountingService] تم حساب أرصدة {len(tree_map)} حساب")

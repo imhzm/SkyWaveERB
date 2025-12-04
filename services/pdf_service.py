@@ -212,7 +212,8 @@ class PDFService:
             # حذف HTML المؤقت
             try:
                 os.remove(temp_html)
-            except:
+            except (OSError, FileNotFoundError):
+                # الملف غير موجود أو لا يمكن حذفه
                 pass
             
             print(f"✅ [PDFService] PDF generated using Chrome: {output_path}")

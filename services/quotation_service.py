@@ -4,14 +4,17 @@ from typing import List, Optional, Dict
 from core.repository import Repository
 from core.event_bus import EventBus
 from core import schemas
+from core.logger import get_logger
 
 # (جديد) هنحتاج قسم المشاريع
 from services.project_service import ProjectService
 
+logger = get_logger(__name__)
+
 
 class QuotationService:
     """
-    (معدل) قسم عروض الأسعار (بيرمي للمشاريع)
+    قسم عروض الأسعار - يتعامل مع إنشاء وإدارة عروض الأسعار وتحويلها لمشاريع
     """
 
     def __init__(
@@ -20,20 +23,46 @@ class QuotationService:
         event_bus: EventBus,
         project_service: ProjectService,
     ):
+        """
+        تهيئة خدمة عروض الأسعار
+        
+        Args:
+            repository: مخزن البيانات الرئيسي
+            event_bus: نظام الأحداث للتواصل بين الخدمات
+            project_service: خدمة المشاريع لتحويل العروض
+        """
         self.repo = repository
         self.bus = event_bus
         self.project_service = project_service
-        print("INFO: قسم عروض الأسعار (QuotationService) جاهز.")
+        logger.info("قسم عروض الأسعار (QuotationService) جاهز")
 
     def get_all_quotations(self) -> List[schemas.Quotation]:
+        """
+        جلب كل عروض الأسعار
+        
+        Returns:
+            قائمة بجميع عروض الأسعار
+        """
         try:
             return self.repo.get_all_quotations()
         except Exception as e:
-            print(f"ERROR: [QuotationService] فشل جلب عروض الأسعار: {e}")
+            logger.error(f"[QuotationService] فشل جلب عروض الأسعار: {e}", exc_info=True)
             return []
 
     def create_new_quotation(self, new_data_dict: dict) -> schemas.Quotation:
-        print("INFO: [QuotationService] استلام طلب إنشاء عرض سعر جديد...")
+        """
+        إنشاء عرض سعر جديد
+        
+        Args:
+            new_data_dict: بيانات عرض السعر الجديد
+            
+        Returns:
+            عرض السعر المُنشأ
+            
+        Raises:
+            Exception: في حالة فشل إنشاء عرض السعر
+        """
+        logger.info("[QuotationService] استلام طلب إنشاء عرض سعر جديد")
         try:
             items_list = new_data_dict.get("items", [])
             subtotal = 0.0

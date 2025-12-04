@@ -84,7 +84,7 @@ class ProjectInvoiceGenerator:
                 # استخدام timestamp كبديل
                 timestamp = datetime.now().strftime("%m%d")
                 return f"SW-{timestamp}"
-        except:
+        except (AttributeError, ValueError, TypeError):
             # في حالة الفشل، استخدم timestamp
             timestamp = datetime.now().strftime("%m%d")
             return f"SW-{timestamp}"
@@ -177,7 +177,7 @@ class ProjectInvoiceGenerator:
         try:
             # محاولة استخدام خط عربي
             canvas_obj.setFont("Helvetica", 12)
-        except:
+        except (AttributeError, RuntimeError):
             canvas_obj.setFont("Helvetica", 12)
         
         # رقم المشروع (أعلى يمين)
@@ -462,7 +462,7 @@ class ProjectPrinter:
             from reportlab.pdfbase.ttfonts import TTFont
             pdfmetrics.registerFont(TTFont('ArabicFont', font_path))
             self.font_name = 'ArabicFont'
-        except:
+        except (FileNotFoundError, OSError, RuntimeError):
             print("⚠️ لم يتم العثور على خط Arial، يرجى التأكد من المسار")
             self.font_name = 'Helvetica'
 
@@ -473,7 +473,7 @@ class ProjectPrinter:
             reshaped_text = arabic_reshaper.reshape(str(text))
             bidi_text = get_display(reshaped_text)
             return bidi_text
-        except:
+        except (AttributeError, TypeError, ValueError):
             return str(text)
 
     def create_pdf(self, data, background_image_path):
@@ -526,5 +526,6 @@ class ProjectPrinter:
         # فتح الملف تلقائياً
         try:
             os.startfile(self.output_path)
-        except:
+        except (OSError, AttributeError):
+            # الملف غير موجود أو النظام لا يدعم startfile
             pass

@@ -826,7 +826,7 @@ class PrintingService:
                         try:
                             config = pdfkit.configuration(wkhtmltopdf=path)
                             break
-                        except:
+                        except (OSError, IOError):
                             continue
                 
                 options = {
