@@ -1,22 +1,40 @@
 # الملف: main.py
-# (ده ملف التشغيل الرئيسي للبرنامج كله)
+"""
+⚡ Sky Wave ERP - الملف الرئيسي
+محسّن للسرعة القصوى
+"""
 
 import sys
 import os
 import time
-from PyQt6.QtWidgets import QApplication, QDialog, QSplashScreen
-from PyQt6.QtGui import QPixmap
+
+# ⚡ تحسين الأداء على Windows
+if os.name == 'nt':
+    os.environ['QT_QPA_PLATFORM'] = 'windows:darkmode=2'
+    os.environ['QT_ENABLE_HIGHDPI_SCALING'] = '1'
+
+# ⚡ تفعيل WebEngine قبل إنشاء QApplication
 from PyQt6.QtCore import Qt
+Qt.AA_ShareOpenGLContexts = True
+from PyQt6.QtWidgets import QApplication, QDialog, QSplashScreen
+QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
+
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import QTimer
 
 # استيراد أدوات الموارد
 from core.resource_utils import get_resource_path, get_font_path
 
-# --- 0. إعداد نظام التسجيل والأخطاء (جديد) ---
+# --- 0. إعداد نظام التسجيل والأخطاء ---
 from core.logger import LoggerSetup
 from core.error_handler import ErrorHandler
 
 # إعداد Logger أول شيء
 logger = LoggerSetup.setup_logger()
+
+# ⚡ طباعة معلومات الإصدار
+from version import CURRENT_VERSION, APP_NAME
+logger.info(f"⚡ {APP_NAME} v{CURRENT_VERSION}")
 
 # --- 1. استيراد "القلب" ---
 from core.repository import Repository
@@ -43,14 +61,13 @@ from ui.login_window import LoginWindow
 # Advanced Sync
 from core.advanced_sync_manager import AdvancedSyncManager
 
-# --- 3. استيراد "الواجهة" (الجسم) ---
-# (هنعمل الملف ده في الخطوة الجاية)
+# --- 3. استيراد "الواجهة" ---
 from ui.main_window import MainWindow 
 
 
 class SkyWaveERPApp:
     """
-    (معدل) الكلاس الرئيسي (مع نظام معالجة الأخطاء).
+    ⚡ الكلاس الرئيسي - محسّن للسرعة
     """
     def __init__(self):
         logger.info("="*80)
@@ -67,15 +84,14 @@ class SkyWaveERPApp:
         self.sync_manager = SyncManager(self.repository)
         self.sync_manager.load_pending_items()  # تحميل العمليات المعلقة
         
-        # ⚡ المزامنة التلقائية (Auto Sync) - Pull & Push
+        # ⚡ المزامنة التلقائية (Auto Sync) - معطلة عند البدء لتجنب التجميد
         from core.auto_sync import AutoSync
         self.auto_sync = AutoSync(self.repository)
-        # سيتم تشغيلها تلقائياً بعد 2 ثانية من فتح البرنامج
-        self.auto_sync.start_auto_sync(delay_seconds=2)
+        # سيتم تشغيلها يدوياً بعد فتح النافذة الرئيسية
         
         logger.info("[MainApp] تم تجهيز المخزن (Repo) والإذاعة (Bus) والإعدادات.")
-        logger.info("تم تهيئة مدير المزامنة (المزامنة التلقائية مفعلة)")
-        logger.info("⚡ المزامنة التلقائية (Pull & Push) ستبدأ بعد 2 ثانية")
+        logger.info("تم تهيئة مدير المزامنة")
+        logger.info("⚡ المزامنة التلقائية ستبدأ بعد فتح النافذة الرئيسية")
 
         # --- 2. تجهيز "الأقسام" (حقن الاعتمادية) ---
         self.accounting_service = AccountingService(
@@ -152,10 +168,97 @@ class SkyWaveERPApp:
         """
         تشغيل الواجهة الرسومية (UI) مع المصادقة.
         """
+        # === منع الشاشة البيضاء على Windows ===
+        import os
+        if os.name == 'nt':  # Windows
+            os.environ['QT_QPA_PLATFORM'] = 'windows:darkmode=2'
+        
         app = QApplication(sys.argv)
+        
+        # === إخفاء كل النوافذ حتى نعرض الـ splash ===
+        app.setQuitOnLastWindowClosed(False)
+        
+        # === منع الشاشة البيضاء تماماً - تطبيق لون داكن على كل شيء فوراً ===
+        from ui.styles import COLORS
+        from PyQt6.QtGui import QPalette, QColor
+        
+        # تطبيق palette داكن على التطبيق كله
+        dark_palette = QPalette()
+        dark_palette.setColor(QPalette.ColorRole.Window, QColor(COLORS['bg_dark']))
+        dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(COLORS['text_primary']))
+        dark_palette.setColor(QPalette.ColorRole.Base, QColor(COLORS['bg_medium']))
+        dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(COLORS['bg_dark']))
+        dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(COLORS['bg_dark']))
+        dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(COLORS['text_primary']))
+        dark_palette.setColor(QPalette.ColorRole.Text, QColor(COLORS['text_primary']))
+        dark_palette.setColor(QPalette.ColorRole.Button, QColor(COLORS['bg_medium']))
+        dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(COLORS['text_primary']))
+        dark_palette.setColor(QPalette.ColorRole.Link, QColor(COLORS['primary']))
+        dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(COLORS['primary']))
+        dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor('#ffffff'))
+        app.setPalette(dark_palette)
+        
+        # تطبيق stylesheet إضافي
+        app.setStyleSheet(f"""
+            * {{
+                background-color: {COLORS['bg_dark']};
+                color: {COLORS['text_primary']};
+            }}
+            QWidget {{
+                background-color: {COLORS['bg_dark']};
+                color: {COLORS['text_primary']};
+            }}
+            QDialog {{
+                background-color: {COLORS['bg_dark']};
+            }}
+            QMainWindow {{
+                background-color: {COLORS['bg_dark']};
+            }}
+        """)
+        
+        # معالجة الأحداث لتطبيق الستايل فوراً
+        app.processEvents()
+        
+        # === عرض شاشة البداية العصرية فوراً (قبل أي حاجة تانية) ===
+        from ui.modern_splash import ModernSplash
+        splash = ModernSplash()
+        
+        # جعل الـ splash يملأ الشاشة كلها عشان يخفي أي شاشة بيضاء
+        screen = app.primaryScreen().geometry()
+        
+        # إنشاء widget أسود يغطي الشاشة كلها
+        from PyQt6.QtWidgets import QWidget
+        black_screen = QWidget()
+        black_screen.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        black_screen.setStyleSheet("background-color: #0a1929;")
+        black_screen.setGeometry(screen)
+        black_screen.show()
+        app.processEvents()
+        
+        # عرض الـ splash فوق الشاشة السوداء
+        splash.setWindowFlags(
+            Qt.WindowType.SplashScreen | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.FramelessWindowHint
+        )
+        splash.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        splash.show()
+        splash.raise_()
+        splash.activateWindow()
+        
+        # معالجة الأحداث لضمان ظهور الـ splash فوراً
+        for _ in range(5):
+            app.processEvents()
         
         # === تحميل الخط العربي Cairo ===
         from PyQt6.QtGui import QFontDatabase
+        splash.show_message("📝 جاري تحميل الخطوط...")
+        app.processEvents()
+        
         font_path = get_font_path("Cairo-VariableFont_slnt,wght.ttf")
         font_id = QFontDatabase.addApplicationFont(font_path)
         if font_id != -1:
@@ -168,36 +271,26 @@ class SkyWaveERPApp:
             logger.error("❌ لم يتم العثور على ملف الخط")
         
         # === تطبيق الأنماط العامة ===
+        splash.show_message("🎨 جاري تطبيق الأنماط...")
+        app.processEvents()
+        
         from ui.styles import apply_styles
         apply_styles(app)
         
-        # === عرض شاشة البداية (Splash Screen) ===
-        logo_path = get_resource_path("logo.png")
-        splash_pixmap = QPixmap(logo_path)
-        if not splash_pixmap.isNull():
-            # تكبير الصورة قليلاً للشاشة
-            splash_pixmap = splash_pixmap.scaled(
-                500, 500,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-        
-        splash = QSplashScreen(splash_pixmap, Qt.WindowType.WindowStaysOnTopHint)
-        splash.setWindowOpacity(0.90)
-        splash.showMessage(
-            "SkyWave ERP...",
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter,
-            Qt.GlobalColor.white
-        )
-        splash.show()
+        # === عرض نافذة تسجيل الدخول ===
+        splash.show_message("🔐 جاري تحميل نافذة تسجيل الدخول...")
         app.processEvents()
         
-        # محاكاة التحميل (2 ثانية)
-        time.sleep(0.7)
-        
-        # عرض نافذة تسجيل الدخول أولاً
         login_window = LoginWindow(self.auth_service)
+        login_window.setWindowFlags(login_window.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        
+        # إخفاء الشاشة السوداء
+        black_screen.close()
+        
         splash.finish(login_window)  # إغلاق الشاشة عند ظهور تسجيل الدخول
+        login_window.raise_()
+        login_window.activateWindow()
+        
         if login_window.exec() != QDialog.DialogCode.Accepted:
             logger.info("[MainApp] تم إلغاء تسجيل الدخول. إغلاق التطبيق.")
             sys.exit(0)
@@ -211,7 +304,15 @@ class SkyWaveERPApp:
         role_display = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
         logger.info(f"[MainApp] تم تسجيل دخول المستخدم: {current_user.username} ({role_display})")
         
+        # === عرض splash screen مرة أخرى أثناء تحميل النافذة الرئيسية ===
+        splash = ModernSplash()
+        splash.show()
+        app.processEvents()
+        
         # إعادة تطبيق الأنماط الكاملة مع إزالة الإطارات البرتقالية
+        splash.show_message("🎨 جاري تطبيق الأنماط النهائية...")
+        app.processEvents()
+        
         from ui.styles import COMPLETE_STYLESHEET
         app.setStyleSheet(COMPLETE_STYLESHEET + """
             * {
@@ -228,8 +329,12 @@ class SkyWaveERPApp:
             }
         """)
         
+        # === إنشاء النافذة الرئيسية ===
+        splash.show_message("🏗️ جاري بناء الواجهة الرئيسية...")
+        app.processEvents()
+        
         main_window = MainWindow(
-            current_user=current_user,  # إضافة المستخدم الحالي
+            current_user=current_user,
             settings_service=self.settings_service,
             accounting_service=self.accounting_service,
             client_service=self.client_service,
@@ -237,21 +342,89 @@ class SkyWaveERPApp:
             expense_service=self.expense_service,
             invoice_service=self.invoice_service,
             quotation_service=self.quotation_service,
-            project_service=self.project_service,  # (المشاريع مسؤولة الآن عن الفوترة والدفعات)
-            sync_manager=self.sync_manager,  # إضافة مدير المزامنة
-            notification_service=self.notification_service,  # إضافة خدمة الإشعارات
-            printing_service=self.printing_service,  # إضافة خدمة الطباعة
-            export_service=self.export_service,  # إضافة خدمة التصدير
-            advanced_sync_manager=self.advanced_sync_manager  # إضافة مدير المزامنة المتقدم
+            project_service=self.project_service,
+            sync_manager=self.sync_manager,
+            notification_service=self.notification_service,
+            printing_service=self.printing_service,
+            export_service=self.export_service,
+            advanced_sync_manager=self.advanced_sync_manager
         )
+        
+        # === عرض النافذة الرئيسية ===
+        splash.show_message("✅ جاري فتح البرنامج...")
+        app.processEvents()
+        
         main_window.show()
+        app.processEvents()
+        
+        # إظهار النافذة بعد تطبيق الستايل (منع الشاشة البيضاء)
+        main_window.setWindowOpacity(1.0)
+        
+        # إخفاء الشاشة السوداء (لو لسه موجودة)
+        try:
+            black_screen.close()
+        except (AttributeError, RuntimeError):
+            # الشاشة السوداء غير موجودة أو تم إغلاقها بالفعل
+            pass
+        
+        # إغلاق splash بعد ظهور النافذة
+        splash.finish(main_window)
         
         # تطبيق التوسيط على كل الجداول
         from ui.styles import apply_center_alignment_to_all_tables
         apply_center_alignment_to_all_tables(main_window)
         
+        # ⚡ تفعيل المزامنة التلقائية لجلب البيانات من السيرفر
+        QTimer.singleShot(2000, lambda: self.auto_sync.start_auto_sync(delay_seconds=1))
+        logger.info("[MainApp] تم تفعيل المزامنة التلقائية")
+        
+        # ⚡ تفعيل التحديث التلقائي في الخلفية
+        self._setup_auto_update(main_window)
+        
         logger.info("[MainApp] البرنامج يعمل الآن.")
         sys.exit(app.exec())
+
+
+    def _setup_auto_update(self, main_window):
+        """تفعيل نظام التحديث التلقائي"""
+        try:
+            from services.auto_update_service import get_auto_update_service
+            from version import CURRENT_VERSION
+            
+            self.auto_update_service = get_auto_update_service()
+            
+            # ربط إشارة التحديث المتاح
+            self.auto_update_service.update_available.connect(
+                lambda v, u, c: self._on_update_available(main_window, v, u, c)
+            )
+            
+            # بدء خدمة التحديث التلقائي
+            self.auto_update_service.start()
+            logger.info(f"[MainApp] تم تفعيل التحديث التلقائي - الإصدار الحالي: {CURRENT_VERSION}")
+            
+        except Exception as e:
+            logger.warning(f"[MainApp] فشل تفعيل التحديث التلقائي: {e}")
+    
+    def _on_update_available(self, main_window, version, url, changelog):
+        """عند توفر تحديث جديد"""
+        from PyQt6.QtWidgets import QMessageBox
+        
+        changelog_text = "\n".join(f"• {item}" for item in changelog) if isinstance(changelog, list) else changelog
+        
+        msg = QMessageBox(main_window)
+        msg.setWindowTitle("🎉 تحديث جديد متاح!")
+        msg.setText(f"الإصدار الجديد: {version}")
+        msg.setInformativeText(f"التحسينات:\n{changelog_text}\n\nهل تريد التحديث الآن؟")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+        msg.setIcon(QMessageBox.Icon.Information)
+        
+        if msg.exec() == QMessageBox.StandardButton.Yes:
+            import webbrowser
+            webbrowser.open(url)
+            logger.info(f"[MainApp] المستخدم وافق على التحديث للإصدار {version}")
+        else:
+            logger.info(f"[MainApp] المستخدم رفض التحديث للإصدار {version}")
 
 
 # --- Global Exception Hook ---
@@ -279,6 +452,10 @@ if __name__ == "__main__":
         app = SkyWaveERPApp()
         logger.info("بدء تشغيل الواجهة الرسومية...")
         app.run()
+    except KeyboardInterrupt:
+        # معالجة Ctrl+C بشكل نظيف
+        logger.info("تم إيقاف البرنامج بواسطة المستخدم (Ctrl+C)")
+        sys.exit(0)
     except Exception as e:
         # لو حصل أي خطأ فادح أثناء التشغيل
         logger.critical(f"فشل تشغيل البرنامج: {e}", exc_info=True)
